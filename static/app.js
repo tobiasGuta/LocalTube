@@ -235,6 +235,32 @@ async function loadSaved() {
   $("library-count").textContent = state.saved.length;
 }
 
+async function loadInsights() {
+  const area = $("learned-interests");
+  try {
+    const profile = await api("/api/profile");
+    area.replaceChildren();
+    const ranked = (profile.interests || []).slice(0, 6);
+    if (!ranked.length) {
+      area.append(make("p", "dialog-description", "Add a topic or like videos to start learning."));
+      return;
+    }
+    const max = Math.max(1, Number(ranked[0].weight));
+    for (const item of ranked) {
+      const row = make("div", "learned-row");
+      row.append(make("span", "", item.topic));
+      const track = make("div", "learned-track");
+      const fill = make("div", "learned-fill");
+      fill.style.width = (Math.max(0, Math.min(100, 100 * item.weight / max))) + "%";
+      track.append(fill);
+      row.append(track);
+      area.append(row);
+    }
+  } catch (err) {
+    area.replaceChildren(make("p", "dialog-description", "Couldn't load interests: " + err.message));
+  }
+}
+
 async function loadTopics() {
   state.topics = await api("/api/topics");
   const container = $("topic-chips");
@@ -252,6 +278,7 @@ async function loadTopics() {
     container.append(chip);
   }
   if (!state.topics.length) container.append(make("p", "dialog-description", "No interests added yet. Your saved video tags also help recommendations."));
+  await loadInsights();
 }
 
 async function loadView(view) {
@@ -335,8 +362,9 @@ async function rateVideo(video, rating) {
       method: "PUT", body: JSON.stringify({rating})
     });
     await loadSaved();
+    if (state.view === "home" || state.view === "explore") await loadView(state.view);
+    else renderShell();
     notice(rating === 1 ? "Liked. Your recommendations will learn from this." : "Like removed.");
-    renderShell();
   } catch (err) { notice(err.message, true); }
 }
 
@@ -451,6 +479,7 @@ $("add-form").addEventListener("submit", async (event) => {
 $("open-interests").addEventListener("click", () => {
   closeMobileSidebar();
   $("interests-dialog").showModal();
+  loadInsights();
 });
 $("close-interests").addEventListener("click", () => $("interests-dialog").close());
 $("topic-form").addEventListener("submit", async (event) => {
@@ -472,7 +501,10 @@ $("topic-form").addEventListener("submit", async (event) => {
   } finally { submit.disabled = false; }
 });
 $("close-player").addEventListener("click", () => $("player-dialog").close());
-$("player-dialog").addEventListener("close", () => $("player-wrap").replaceChildren());
+$("player-dialog").addEventListener("close", () => {
+  $("player-wrap").replaceChildren();
+  if (state.view === "home" || state.view === "explore") loadView(state.view);
+});
 for (const id of ["player-dialog", "add-dialog", "interests-dialog"]) {
   $(id).addEventListener("click", (event) => {
     if (event.target === $(id)) $(id).close();

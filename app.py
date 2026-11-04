@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from discovery import search_youtube
+from recommender import build_profile, topics_to_search, rank_feed
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOCALTUBE_DB", str(ROOT / "data" / "localtube.db")))
@@ -43,6 +44,10 @@ def init_db():
         db.execute("""CREATE TABLE IF NOT EXISTS discovery_cache (
             query TEXT PRIMARY KEY, payload TEXT NOT NULL, fetched_at INTEGER NOT NULL
         )""")
+        # Non-destructive migration for databases created with v0.1/v0.2/v0.3.
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(videos)")}
+        if "last_activity_at" not in columns:
+            db.execute("ALTER TABLE videos ADD COLUMN last_activity_at TEXT")
 
 
 def parse_id(raw):
@@ -74,7 +79,8 @@ def parse_id(raw):
 def as_video(row):
     return {
         "id": row["id"], "title": row["title"], "tags": json.loads(row["tags"]),
-        "created_at": row["created_at"], "plays": row["plays"], "rating": row["rating"]
+        "created_at": row["created_at"], "plays": row["plays"], "rating": row["rating"],
+        "last_activity_at": row["last_activity_at"]
     }
 
 
@@ -98,7 +104,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="LocalTube", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="LocalTube", version="0.4.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -140,7 +146,10 @@ def add_video(video: NewVideo):
 @app.post("/api/videos/{video_id}/play")
 def play(video_id: str):
     with connect() as db:
-        changed = db.execute("UPDATE videos SET plays=plays+1 WHERE id=?", (video_id,))
+        changed = db.execute(
+            "UPDATE videos SET plays=plays+1, last_activity_at=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"), video_id),
+        )
         if not changed.rowcount:
             raise HTTPException(404, "Video not found")
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
@@ -149,7 +158,10 @@ def play(video_id: str):
 @app.put("/api/videos/{video_id}/feedback")
 def feedback(video_id: str, value: Feedback):
     with connect() as db:
-        changed = db.execute("UPDATE videos SET rating=? WHERE id=?", (value.rating, video_id))
+        changed = db.execute(
+            "UPDATE videos SET rating=?, last_activity_at=? WHERE id=?",
+            (value.rating, datetime.now(timezone.utc).isoformat(timespec="seconds"), video_id),
+        )
         if not changed.rowcount:
             raise HTTPException(404, "Video not found")
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
@@ -255,26 +267,31 @@ def discover(q: str = Query(min_length=2, max_length=80)):
     return [{**v, "tags": [term[:30].lower()], "reason": "Search result"} for v in videos]
 
 
-def _interest_topics() -> list[str]:
-    scores: dict[str, int] = {}
+def _profile():
+    """Build an explainable profile from on-device user preferences and clicks."""
     with connect() as db:
         selected = [row["topic"] for row in db.execute("SELECT topic FROM topics")]
-        saved = db.execute("SELECT tags, plays, rating FROM videos").fetchall()
-    for topic in selected:
-        scores[topic] = scores.get(topic, 0) + 12
-    for row in saved:
-        if row["rating"] == -1:
-            continue
-        weight = 1 + min(5, row["plays"]) * 3 + (6 if row["rating"] == 1 else 0)
-        for tag in json.loads(row["tags"]):
-            if len(tag) >= 2:
-                scores[tag] = scores.get(tag, 0) + weight
-    return sorted(scores, key=lambda topic: (-scores[topic], topic))
+    return build_profile(selected, videos())
+
+
+@app.get("/api/profile")
+def profile():
+    """Local transparency endpoint: what topics currently influence rankings."""
+    interests = _profile()
+    top = sorted(interests["tags"].items(), key=lambda item: (-item[1], item[0]))
+    return {
+        "selected": sorted(interests["chosen"]),
+        "interests": [{"topic": tag, "weight": round(weight, 2)}
+                      for tag, weight in top if weight > 0][:12],
+        "note": "Play clicks are signals, not watched duration.",
+    }
 
 
 @app.get("/api/feed")
 def feed():
-    topics = _interest_topics()[:2]
+    """Personalize public search results with local signals and topic diversity."""
+    interests = _profile()
+    topics = topics_to_search(interests, limit=3)
     if not topics:
         return {"topics": [], "videos": []}
     batches = []
@@ -289,16 +306,7 @@ def feed():
         )
     with connect() as db:
         seen = {row["id"] for row in db.execute("SELECT id FROM videos")}
-    suggestions = []
-    for index in range(8):
-        for topic, videos in batches:
-            if index >= len(videos):
-                continue
-            video = videos[index]
-            if video["id"] in seen:
-                continue
-            seen.add(video["id"])
-            suggestions.append({
-                **video, "tags": [topic[:30]], "reason": "Because you're into " + topic
-            })
-    return {"topics": topics, "videos": suggestions}
+    return {
+        "topics": topics,
+        "videos": rank_feed(batches, interests, seen, limit=18),
+    }

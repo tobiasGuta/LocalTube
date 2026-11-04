@@ -2,7 +2,18 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
-## What's new in v0.3
+## What's new in v0.4: smarter, explainable recommendations
+
+- **Likes count more than play clicks**, with a capped signal from repeated clicks. A click is not a confirmed watch.
+- **Recent activity matters more**, gradually fading older engagement rather than permanently locking your feed to an old interest.
+- **Title similarity** boosts videos sharing meaningful words with videos you liked or clicked; common words like "video" or "youtube" are ignored.
+- **Topic and channel variety:** a local greedy reranker reduces repetition while still prioritizing your stronger interests.
+- **Three topic searches instead of two** can help broaden the recommendation pool. Search metadata is still cached for one hour.
+- **Transparent interests:** Manage interests → "What LocalTube has learned" displays your strongest topic signals from a local API.
+- **Preserves existing data.** A non-destructive SQLite migration adds an optional last-activity timestamp; saved videos and feedback stay intact.
+- **No remote AI service, embeddings API, telemetry, or extra Python packages.** This is a lightweight heuristics-based improvement, not an AI model or YouTube's algorithm.
+
+## Previous release: v0.3
 
 - A YouTube-inspired (but LocalTube-branded) layout: fixed top search, collapsible sidebar, and a responsive grid of widescreen video cards.
 - Home recommendations, Explore, Your library, and Liked videos views.
@@ -54,7 +65,7 @@ The local library remains available even when YouTube discovery is temporarily b
 - Fedora uses yt-dlp for public YouTube search metadata. **Those requests still reach YouTube from Fedora's IP address**; no login does not mean no Google contact.
 - Embedded playback contacts Google directly from your browser. Optional thumbnails contact `i.ytimg.com` from your browser when enabled.
 - Thumbnail preference uses browser localStorage. LocalTube itself has no analytics.
-- The recommendations are currently simple topic- and click-based signals, **not** YouTube's proprietary model or actual watch-duration tracking.
+- The recommender uses local heuristics, **not** YouTube's proprietary model or actual watch-duration tracking.
 - `yt-dlp` may stop working when YouTube changes its interface. If search breaks, update it with `python -m pip install -U yt-dlp`.
 - **Keep the app bound to 127.0.0.1.** Authentication and deployment security are not yet implemented. Do not expose it via a LAN binding, port forward, or Tailscale until those protections are added.
 
