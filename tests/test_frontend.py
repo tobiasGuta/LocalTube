@@ -108,3 +108,24 @@ def test_tracking_controls_are_local_and_not_loaded_before_play():
     assert "sample(session)" in player
     assert 'method: "PUT"' in player
     assert "model_validator" not in player
+
+
+def test_v07_model_selector_and_explanation_menu():
+    html = HTML.read_text(encoding="utf-8")
+    js = JS.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    assert 'id="ranking-model"' in html
+    assert 'id="refined-search"' in html
+    assert 'localtube-refined-search' in js
+    assert '"&refine=" + String(state.refine)' in js
+    assert 'value="content"' in html
+    assert 'value="baseline"' in html
+    assert "ranker: \"content\"" in js
+    assert 'encodeURIComponent(state.ranker)' in js
+    assert 'menuAction("Why this video?"' in js
+    assert "score_breakdown" in js
+    assert ".ranking-choice" in css
+    # This feature only adds same-origin requests; scripts remain local on home.
+    parser = PageParser()
+    parser.feed(html)
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]

@@ -5,9 +5,10 @@ const $ = (id) => document.getElementById(id);
 const state = {
   view: "home", results: [], saved: [], topics: [], filter: "All",
   thumbnails: false, query: "", requestToken: 0,
-  currentVideo: null, pendingLikes: new Set()
+  currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true
 };
 try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; } catch (_) {}
+try { state.refine = localStorage.getItem("localtube-refined-search") !== "off"; } catch (_) {}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -183,6 +184,19 @@ function renderCard(video) {
     menuAction("Save to library", () => saveVideo(video));
   } else {
     menuAction(saved.rating === 1 ? "Remove like" : "Like video", () => rateVideo(video, saved.rating === 1 ? 0 : 1));
+  }
+  if (video.score_breakdown) {
+    menuAction("Why this video?", () => {
+      const detail = video.score_breakdown;
+      const show = (key) => Number(detail[key] || 0).toFixed(2);
+      notice("Score " + Number(video.score).toFixed(2) +
+        " · Topic +" + show("topic") + " · Title +" + show("title") +
+        " · Creator +" + show("creator") +
+        " · Discovery +" + show("discovery") +
+        " · Other " + (Number(detail.agreement || 0) +
+          Number(detail.disliked_similarity || 0) + Number(detail.diversity_penalty || 0)).toFixed(2) +
+        ". Heuristic scores, not probabilities.");
+    });
   }
   menuAction("Not interested", () => dismissVideo(video));
   if (saved) menuAction("Remove from library", () => removeVideo(video), true);
@@ -383,10 +397,16 @@ async function loadView(view, {refresh = false} = {}) {
   notice(refresh ? "Finding a fresh mix of videos…" : "Finding videos for you…");
   renderShell();
   try {
-    const feed = await api("/api/feed" + (refresh ? "?refresh=true" : ""));
+    const feed = await api("/api/feed?ranker=" + encodeURIComponent(state.ranker) +
+      "&refine=" + String(state.refine) + (refresh ? "&refresh=true" : ""));
     if (token !== state.requestToken) return;
     state.results = feed.videos;
-    notice(feed.topics.length ? "" : "Add an interest or play a saved video to start discovering.");
+    notice(feed.topics.length
+      ? (feed.candidates_considered || 0) + " videos evaluated across " +
+        (feed.queries_used || 0) + " searches · " +
+        (state.ranker === "baseline" ? "v0.6 baseline" : "v0.7 content-based") +
+        " ranking"
+      : "Add an interest or play a saved video to start discovering.");
     renderShell();
   } catch (err) {
     if (token !== state.requestToken) return;
@@ -527,6 +547,16 @@ $("sidebar-toggle").addEventListener("click", () => {
 $("sidebar-backdrop").addEventListener("click", closeMobileSidebar);
 document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventListener("click", () => loadView(nav.dataset.view)));
 $("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
+$("ranking-model").addEventListener("change", (event) => {
+  state.ranker = event.currentTarget.value === "baseline" ? "baseline" : "content";
+  if (state.view === "home" || state.view === "explore") loadView(state.view);
+});
+$("refined-search").checked = state.refine;
+$("refined-search").addEventListener("change", (event) => {
+  state.refine = event.currentTarget.checked;
+  try { localStorage.setItem("localtube-refined-search", state.refine ? "on" : "off"); } catch (_) {}
+  if (state.view === "home" || state.view === "explore") loadView(state.view);
+});
 $("back-to-feed").addEventListener("click", () => loadView("home"));
 $("video-search").addEventListener("submit", (event) => {
   event.preventDefault();

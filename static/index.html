@@ -76,7 +76,7 @@
     <div class="sidebar-footer">
       <span class="local-badge"><span class="local-dot"></span> Local-first</span>
       <p>No Google account required. Search and playback still contact YouTube.</p>
-      <span>LocalTube v0.6</span>
+      <span>LocalTube v0.7</span>
     </div>
   </aside>
   <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
@@ -84,6 +84,13 @@
   <main id="main" class="main">
     <div class="feed-controls">
       <div id="filter-chips" class="filter-chips" aria-label="Filter by topic"></div>
+      <label class="ranking-choice" for="ranking-model">
+        <span>Ranking</span>
+        <select id="ranking-model" aria-label="Select ranking algorithm">
+          <option value="content">v0.7 Content</option>
+          <option value="baseline">v0.6 Baseline</option>
+        </select>
+      </label>
       <button id="reload-feed" class="icon-button reload" type="button" aria-label="Reload videos" title="Reload videos">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5.6"/></svg>
       </button>
@@ -107,7 +114,7 @@
       <p id="empty-description">Add interests or watch saved videos to start getting recommendations.</p>
       <button id="empty-action" type="button" class="create-button">Choose interests</button>
     </div>
-    <p class="feed-footer">LocalTube keeps your library, likes, and interests locally. Enabling thumbnails loads images from Google; playing videos contacts YouTube.</p>
+    <p class="feed-footer">Your library, likes, and rankings stay on Fedora. Discovery searches YouTube, including short keywords from liked/watched titles or creators; thumbnails and playback also contact Google when enabled.</p>
   </main>
 
   <dialog id="add-dialog" class="modal" aria-labelledby="add-title">
@@ -134,6 +141,10 @@
       <button id="close-interests" type="button" class="icon-button" aria-label="Close">✕</button>
     </div>
     <p class="dialog-description">Pick up to 12 interests. These topics and your viewing signals power your recommendations on this computer.</p>
+    <label class="refined-search-option" for="refined-search">
+      <input type="checkbox" id="refined-search" checked>
+      <span>Use liked-video title keywords and creator names in discovery searches. These search terms are sent to YouTube.</span>
+    </label>
     <form id="topic-form" class="interest-form">
       <label class="sr-only" for="topic-input">New interest</label>
       <input id="topic-input" name="topic" maxlength="30" placeholder="Gaming, Linux, electronics…" required>

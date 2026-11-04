@@ -2,6 +2,17 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+## New in v0.7 — better candidates and transparent content ranking
+
+- **More focused candidate discovery.** LocalTube searches up to three preferred topics, plus at most one short keyword query from a liked or meaningfully watched video's title, and at most one query using its creator name. **Maximum five queries per feed**; results are locally cached for an hour per query.
+- **Privacy control:** Manage Interests includes a switch to disable extra liked-title and creator-based searches. The switch is on initially for v0.7 discovery and is stored in the browser only. When off, LocalTube searches general topics only. All YouTube searches still disclose the search terms and Fedora IP to Google; no local files or complete saved titles are uploaded.
+- **Local text similarity.** A dependency-free TF-IDF vectorizer computes cosine similarity between candidate titles and liked/watched titles, with a penalty for similarity to disliked titles.
+- **Interpretable features.** Ranking uses bounded topic, title, creator, discovery-position and multi-query agreement scores, followed by topic/creator repetition penalties. These coefficients are **manual heuristics**, not trained ML weights or calibrated probabilities.
+- **A fair baseline comparison.** Choose **v0.7 Content** or **v0.6 Baseline** from the ranking selector. Both evaluate the *same cached candidates*; the former is the default. The three-dot menu on content-ranked videos has **Why this video?** to show score contributions.
+- **Developer API:** `/api/feed?ranker=content` or `/api/feed?ranker=baseline` (append `&refine=false` for topic-only queries) returns ranked videos and candidate/query counts. The content ranker exposes a per-video score breakdown for inspection.
+- **Nothing new to install:** the content ranker uses Python's standard library, and the existing SQLite watch history is preserved. No external AI API or automatic background jobs.
+
+**Limitations:** More candidates and a mathematical score do not automatically guarantee better recommendations. We need feedback and offline/online evaluation before claiming an improvement. Our next phase should log impressions, track interaction outcomes, and measure ranking quality (without assuming unclicked videos are dislikes). YouTube search can still block automated discovery.
 ## New in v0.6 — watch progress and a fresher feed
 
 - **Real playback progress:** Official YouTube IFrame API loads only when you click Play. While it reports PLAYING, LocalTube samples every five seconds, ignoring jumps from seeking and buffering. Watch seconds remain approximate.
@@ -91,7 +102,7 @@ The local library remains available even when YouTube discovery is temporarily b
 - Fedora uses yt-dlp for public YouTube search metadata. **Those requests still reach YouTube from Fedora's IP address**; no login does not mean no Google contact.
 - Embedded playback contacts Google directly from your browser. Optional thumbnails contact `i.ytimg.com` from your browser when enabled.
 - Thumbnail preference uses browser localStorage. LocalTube itself has no analytics.
-- The recommender uses local heuristics, **not** YouTube's proprietary model or actual watch-duration tracking.
+- The recommender uses local heuristics, **not** YouTube's proprietary model. LocalTube records approximate player activity, not perfect measures of attention.
 - `yt-dlp` may stop working when YouTube changes its interface. If search breaks, update it with `python -m pip install -U yt-dlp`.
 - **Keep the app bound to 127.0.0.1.** Authentication and deployment security are not yet implemented. Do not expose it via a LAN binding, port forward, or Tailscale until those protections are added.
 
@@ -108,10 +119,12 @@ Tests use mocked YouTube results and need no Google account or live YouTube acce
 ## Roadmap
 
 1. Local library and recommendations — v0.1.
-2. Video discovery, custom interests, and search — v0.2.
-3. Video-first responsive interface — **v0.3**.
-4. Better recommendations, subscriptions, and optional related video discovery.
-5. Authentication, protected cross-device access, then private Tailscale.
-6. Dedicated server migration and backup/export.
+2. Account-free discovery — v0.2.
+3. Responsive video-first UI — v0.3.
+4. Explainable heuristics and watch signals — v0.4–v0.6.
+5. TF-IDF candidate expansion and comparable rankers — **v0.7**.
+6. Evaluate ranking with impression/feedback data, then consider learned weights.
+7. Channel subscriptions and more diverse discovery.
+8. Authentication and secure LAN/Tailscale access, then home server migration.
 
 MIT licensed.

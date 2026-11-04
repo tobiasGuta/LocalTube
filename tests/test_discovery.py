@@ -25,7 +25,7 @@ def test_feed_search_cache_and_save(tmp_path, monkeypatch):
         assert feed.status_code == 200
         assert feed.json()["topics"] == ["linux"]
         assert len(feed.json()["videos"]) == 2
-        assert feed.json()["videos"][0]["reason"] == "Because you chose linux"
+        assert feed.json()["videos"][0]["reason"] == "Based on your interest in linux"
         assert client.get("/api/feed").status_code == 200
         assert calls == [("linux", 18)]
         search = client.get("/api/discover", params={"q": "linux"})

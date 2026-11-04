@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 from discovery import search_youtube
 from recommender import build_profile, topics_to_search, rank_feed
+from discovery_plan import build_queries
+from content_ranker import rank_content
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOCALTUBE_DB", str(ROOT / "data" / "localtube.db")))
@@ -145,7 +147,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="LocalTube", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="LocalTube", version="0.7.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -389,20 +391,25 @@ def profile():
         "selected": sorted(interests["chosen"]),
         "interests": [{"topic": tag, "weight": round(weight, 2)}
                       for tag, weight in top if weight > 0][:12],
-        "note": "Play clicks are signals, not watched duration.",
+        "note": "Play clicks, approximate watch time, likes and completions influence ranking.",
     }
 
 
 @app.get("/api/feed")
-def feed(refresh: bool = False):
-    """More candidates, rotating related searches, and local reranking."""
+def feed(refresh: bool = False,
+         refine: bool = True,
+         ranker: str = Query(default="content", pattern="^(content|baseline)$")):
+    """Generate better candidates, keep baseline and new ranker comparable."""
     interests = _profile()
+    library = videos()
     topics = topics_to_search(interests, limit=3)
     if not topics:
         return {"topics": [], "videos": []}
 
     with connect() as db:
-        row = db.execute("SELECT refresh_cursor,last_refresh_at FROM feed_settings WHERE id=1").fetchone()
+        row = db.execute(
+            "SELECT refresh_cursor,last_refresh_at FROM feed_settings WHERE id=1"
+        ).fetchone()
         cursor = row["refresh_cursor"]
         now = int(time.time())
         if refresh and now - row["last_refresh_at"] >= 30:
@@ -412,11 +419,9 @@ def feed(refresh: bool = False):
                 (cursor, now),
             )
 
-    variants = ("", " latest", " highlights", " 2026", " tutorial")
+    plan = build_queries(interests, library, cursor, include_refined=refine)
     batches = []
-    for topic in topics:
-        # Rotate the *query*, not just the same 8 returned items each refresh.
-        query = topic + variants[cursor % len(variants)]
+    for topic, query in plan:
         try:
             batches.append((topic, _search_cached(query)))
         except HTTPException:
@@ -425,10 +430,19 @@ def feed(refresh: bool = False):
         raise HTTPException(
             502, "YouTube discovery is unavailable right now. Your saved library still works."
         )
-    with connect() as db:
-        seen = {row["id"] for row in db.execute("SELECT id FROM videos")}
+    seen = {video["id"] for video in library}
+    if ranker == "baseline":
+        ranked = rank_feed(batches, interests, seen, limit=24)
+    else:
+        ranked = rank_content(batches, interests, library, seen, limit=24)
     return {
         "topics": topics,
-        "videos": rank_feed(batches, interests, seen, limit=24),
+        "videos": ranked,
         "cursor": cursor,
+        "ranker": ranker,
+        "queries_used": len(batches),
+        "candidates_considered": len({
+            video["id"] for _, found in batches for video in found
+            if isinstance(video.get("id"), str) and video["id"] not in seen
+        }),
     }
