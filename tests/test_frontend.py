@@ -59,3 +59,28 @@ def test_javascript_is_syntactically_valid_if_node_is_available():
     if not shutil.which("node"):
         return
     subprocess.run(["node", "--check", str(JS)], check=True)
+
+
+def test_one_click_like_controls_in_cards_and_player():
+    html = HTML.read_text(encoding="utf-8")
+    js = JS.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    # Both controls are present; players receive a descriptive button label.
+    assert 'id="player-like"' in html
+    assert 'id="player-like-label"' in html
+    assert 'aria-pressed="false"' in html
+    assert "bottom.append(avatar, content, likeButton(video), menu)" in js
+    assert 'button.setAttribute("aria-pressed", String(liked))' in js
+    assert 'button.setAttribute("aria-label", (liked ? "Unlike " : "Like ") + video.title)' in js
+    assert '"player-like").addEventListener("click"' in js
+    assert "await ensureSaved(video);" in js
+    assert 'method: "PUT", body: JSON.stringify({rating})' in js
+    assert "state.pendingLikes.has(video.id)" in js
+    assert ".card-like.is-liked" in css
+    # Like updates must not recreate the iframe or reload suggestions.
+    rate_method = js.split("async function rateVideo(video, rating) {", 1)[1].split(
+        "async function dismissVideo(video) {", 1
+    )[0]
+    assert "await loadView(" not in rate_method
+    assert 'player-wrap").replaceChildren' not in rate_method
+    assert "renderGrid();" in rate_method

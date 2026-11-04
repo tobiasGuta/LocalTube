@@ -2,6 +2,16 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+## What's new in v0.5: one-click likes
+
+- Tap the **thumbs-up icon** beside any video card's three-dot menu to like it instantly.
+- The video is **saved to your local library automatically** as part of liking it — no separate Save step needed.
+- **Like / Liked** is also available **inside the video player**, without interrupting playback.
+- The icon reflects your saved local like state. Tap again to unlike. Like/unlike works from search results, Home, Explore, and your Library.
+- Multiple rapid clicks on the same video are ignored until its previous update finishes, to prevent duplicate saves and inconsistent feedback.
+- The video stays visible while you like it. Click **Refresh** to get a newly ranked feed; the discovery feed still omits videos already saved, and likes remain available in **Liked videos**.
+- Likes are **LocalTube-only**, not public YouTube likes or actions performed on your Google account.
+
 ## What's new in v0.4: smarter, explainable recommendations
 
 - **Likes count more than play clicks**, with a capped signal from repeated clicks. A click is not a confirmed watch.

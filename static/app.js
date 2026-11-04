@@ -4,7 +4,8 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   view: "home", results: [], saved: [], topics: [], filter: "All",
-  thumbnails: false, query: "", requestToken: 0
+  thumbnails: false, query: "", requestToken: 0,
+  currentVideo: null, pendingLikes: new Set()
 };
 try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; } catch (_) {}
 
@@ -74,6 +75,46 @@ function playIcon() {
   return svg;
 }
 
+function thumbUpIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M7 10v12H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3zm0 0 5-8a2 2 0 0 1 3.5 1.3V9H20a2 2 0 0 1 2 2l-1.4 9a2 2 0 0 1-2 2H7");
+  svg.append(path);
+  return svg;
+}
+
+function isLiked(videoId) {
+  return state.saved.some(item => item.id === videoId && item.rating === 1);
+}
+
+function likeButton(video) {
+  const liked = isLiked(video.id);
+  const button = action("", () => toggleLike(video), "card-like" + (liked ? " is-liked" : ""));
+  button.append(thumbUpIcon());
+  button.setAttribute("aria-label", (liked ? "Unlike " : "Like ") + video.title);
+  button.setAttribute("aria-pressed", String(liked));
+  button.title = liked ? "Remove like" : "Like this video";
+  button.disabled = state.pendingLikes.has(video.id);
+  return button;
+}
+
+function updatePlayerLike() {
+  const button = $("player-like");
+  const video = state.currentVideo;
+  if (!video) {
+    button.disabled = true;
+    return;
+  }
+  const liked = isLiked(video.id);
+  button.disabled = state.pendingLikes.has(video.id);
+  button.classList.toggle("is-liked", liked);
+  button.setAttribute("aria-pressed", String(liked));
+  button.setAttribute("aria-label", (liked ? "Unlike " : "Like ") + video.title);
+  $("player-like-label").textContent = liked ? "Liked" : "Like";
+}
+
 function renderCard(video) {
   const saved = state.saved.find(item => item.id === video.id);
   const card = make("article", "video-card");
@@ -135,7 +176,7 @@ function renderCard(video) {
   menuAction("Not interested", () => dismissVideo(video));
   if (saved) menuAction("Remove from library", () => removeVideo(video), true);
   menu.append(summary, menuItems);
-  bottom.append(avatar, content, menu);
+  bottom.append(avatar, content, likeButton(video), menu);
   card.append(thumbnail, bottom);
   return card;
 }
@@ -200,7 +241,7 @@ function renderGrid() {
     explore: ["Nothing to explore yet", "Choose an interest or search for something you want to watch.", "Choose interests"],
     search: ["No videos found", "Try a different search phrase, or search for a broader topic.", "Go home"],
     library: ["Your library is empty", "Save a video to make it easy to find again.", "Add video"],
-    liked: ["No liked videos yet", "Use the three-dot menu on any saved video to give it a like.", "Go home"]
+    liked: ["No liked videos yet", "Tap the thumbs-up beside a video to like it instantly.", "Go home"]
   }[state.view];
   $("empty-title").textContent = state.filter !== "All" ? "No videos in " + state.filter : empty[0];
   $("empty-description").textContent = state.filter !== "All" ? "Try selecting All or another topic." : empty[1];
@@ -355,17 +396,33 @@ async function saveVideo(video) {
   } catch (err) { notice(err.message, true); }
 }
 
+function toggleLike(video) {
+  if (state.pendingLikes.has(video.id)) return;
+  rateVideo(video, isLiked(video.id) ? 0 : 1);
+}
+
 async function rateVideo(video, rating) {
+  if (state.pendingLikes.has(video.id)) return;
+  state.pendingLikes.add(video.id);
+  renderGrid();
+  updatePlayerLike();
   try {
+    // Saving and liking happen in one click; no manual save needed.
     await ensureSaved(video);
     await api("/api/videos/" + encodeURIComponent(video.id) + "/feedback", {
       method: "PUT", body: JSON.stringify({rating})
     });
     await loadSaved();
-    if (state.view === "home" || state.view === "explore") await loadView(state.view);
-    else renderShell();
-    notice(rating === 1 ? "Liked. Your recommendations will learn from this." : "Like removed.");
-  } catch (err) { notice(err.message, true); }
+    // Keep the current card visible. Re-rank only on the next feed refresh.
+    renderGrid();
+    notice(rating === 1 ? "Liked locally! Your recommendations will learn from this." : "Like removed.");
+  } catch (err) {
+    notice(err.message, true);
+  } finally {
+    state.pendingLikes.delete(video.id);
+    renderGrid();
+    updatePlayerLike();
+  }
 }
 
 async function dismissVideo(video) {
@@ -399,7 +456,9 @@ async function play(video) {
     await ensureSaved(video);
     await api("/api/videos/" + encodeURIComponent(video.id) + "/play", {method: "POST"});
     await loadSaved();
+    state.currentVideo = video;
     $("player-title").textContent = video.title;
+    updatePlayerLike();
     const frame = make("iframe");
     frame.title = video.title;
     frame.src = "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(video.id) + "?autoplay=1&rel=0";
@@ -501,7 +560,12 @@ $("topic-form").addEventListener("submit", async (event) => {
   } finally { submit.disabled = false; }
 });
 $("close-player").addEventListener("click", () => $("player-dialog").close());
+$("player-like").addEventListener("click", () => {
+  if (state.currentVideo) toggleLike(state.currentVideo);
+});
 $("player-dialog").addEventListener("close", () => {
+  state.currentVideo = null;
+  updatePlayerLike();
   $("player-wrap").replaceChildren();
   if (state.view === "home" || state.view === "explore") loadView(state.view);
 });
