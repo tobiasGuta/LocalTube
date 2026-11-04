@@ -1,10 +1,19 @@
 # LocalTube
 
-**Your videos, your algorithm.** A local-first, account-free YouTube discovery and recommendation app for Fedora.
+**Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
+
+## What's new in v0.3
+
+- A YouTube-inspired (but LocalTube-branded) layout: fixed top search, collapsible sidebar, and a responsive grid of widescreen video cards.
+- Home recommendations, Explore, Your library, and Liked videos views.
+- Video playback by clicking a thumbnail or title, and a three-dot menu for Save, Like, Not interested, and Remove.
+- Topic filter chips, an Add video dialog, and Manage interests dialog.
+- Optional real thumbnails, **off by default**. The checkbox is in the top bar; enabling it contacts Google's thumbnail servers and saves only that browser preference in localStorage.
+- Existing SQLite library, tags, play clicks, favorites, and interests continue to work without any migration.
 
 ## Run on Fedora
 
-Python 3.10+ required. New installation:
+Python 3.10+ required. For a new install:
 
 ```bash
 git clone https://github.com/tobiasGuta/LocalTube.git
@@ -15,53 +24,57 @@ python -m pip install -r requirements.txt
 python -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000. Stop with Ctrl+C.
+Then open **http://127.0.0.1:8000**.
 
-Already installed? Update using:
+To update an existing installation (stop the running server with Ctrl+C first):
 
 ```bash
 cd LocalTube
 git pull --ff-only
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-# Stop the old server with Ctrl+C, then restart:
 python -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-## What works in v0.2
+Refresh the browser with Ctrl+Shift+R after updating to clear old JS and CSS.
 
-- Discover unseen YouTube videos based on chosen interests and your saved video tags, likes, and play clicks.
-- Search YouTube without logging into Google. The Fedora backend uses yt-dlp to retrieve public metadata.
-- Play discovered videos (automatically saving them), save without playing, or mark not interested.
-- Browse the original saved library and its local, explainable recommendations.
-- Cache search results in SQLite for one hour; on upstream failure, older cached results can be shown.
-- Optional video thumbnails are off by default to avoid automatic requests to Google's image servers.
+## Use
 
-## Privacy and limitations
+1. Click **Manage interests** to set topics, or use the top search bar for account-free YouTube search.
+2. Click a video thumbnail or title to play it in an embedded YouTube player.
+3. Use the **⋮** menu on a card to save, like, dismiss, or remove a video.
+4. Visit **Your library** to find your saved videos; your likes are under **Liked videos**.
+5. Turn on **Thumbnails** in the header for a photo-based YouTube-style grid. This makes image requests to Google.
 
-**No Google account required.** LocalTube stores saved videos, selected topics, metadata caches, play clicks and ratings in data/localtube.db on your Fedora computer. No LocalTube analytics.
+The local library remains available even when YouTube discovery is temporarily blocked or offline.
 
-However, this is **not Google-free video hosting**. yt-dlp search requests go directly to YouTube from Fedora's IP. Playback loads YouTube/Google in your browser. Enabling thumbnails sends thumbnail requests to Google's image servers. Google may still observe the IP, timing, and other network signals.
+## Privacy, security, and trade-offs
 
-Recommendations are simple topic-based ranking, not YouTube's proprietary algorithm. Playback tracks button clicks, not completed watches. yt-dlp relies on YouTube's changing public interface; searches can fail or be blocked. Try updating it with: python -m pip install -U yt-dlp. The library works even when discovery is unavailable.
-
-**Security warning:** This version has no authentication. Keep it bound to 127.0.0.1; do not expose it to other devices, Tailscale, the LAN, or the internet until authentication, origin protections, and secure deployment are added.
+- No Google account needed. Your library, topic tags, likes, play clicks, and metadata cache are stored locally in `data/localtube.db` (ignored by Git).
+- Fedora uses yt-dlp for public YouTube search metadata. **Those requests still reach YouTube from Fedora's IP address**; no login does not mean no Google contact.
+- Embedded playback contacts Google directly from your browser. Optional thumbnails contact `i.ytimg.com` from your browser when enabled.
+- Thumbnail preference uses browser localStorage. LocalTube itself has no analytics.
+- The recommendations are currently simple topic- and click-based signals, **not** YouTube's proprietary model or actual watch-duration tracking.
+- `yt-dlp` may stop working when YouTube changes its interface. If search breaks, update it with `python -m pip install -U yt-dlp`.
+- **Keep the app bound to 127.0.0.1.** Authentication and deployment security are not yet implemented. Do not expose it via a LAN binding, port forward, or Tailscale until those protections are added.
 
 ## Tests
 
 ```bash
 python -m pip install pytest httpx
 python -m pytest -q
+node --check static/app.js  # optional JavaScript syntax check, requires Node
 ```
 
-Tests mock YouTube discovery, so they require no external services.
+Tests use mocked YouTube results and need no Google account or live YouTube access. The frontend has static contract tests; interactive UI should also be smoke-tested in Firefox/Safari.
 
 ## Roadmap
 
-1. Local library and recommendation MVP — done.
-2. Video discovery, custom topics, search and cached results — v0.2.
-3. Better related videos, subscription import, and relevance ranking.
-4. Authentication and secure cross-device access, then Tailscale.
-5. Home server migration and backup/export.
+1. Local library and recommendations — v0.1.
+2. Video discovery, custom interests, and search — v0.2.
+3. Video-first responsive interface — **v0.3**.
+4. Better recommendations, subscriptions, and optional related video discovery.
+5. Authentication, protected cross-device access, then private Tailscale.
+6. Dedicated server migration and backup/export.
 
 MIT licensed.

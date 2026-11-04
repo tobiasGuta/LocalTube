@@ -2,86 +2,149 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f0f0f">
   <title>LocalTube — Your videos, your algorithm</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
-  <script src="/static/discovery.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="LocalTube home"><span class="brand-icon">▶</span> LocalTube</a>
-    <span class="pill">LOCAL FIRST · ALPHA</span>
+    <div class="topbar-left">
+      <button id="sidebar-toggle" class="icon-button" type="button" aria-label="Toggle navigation" aria-expanded="true" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <a class="brand" href="/" aria-label="LocalTube home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 30 22"><rect x="0" y="1" width="30" height="20" rx="6" fill="currentColor"/><path d="m12 6 9 6-9 5z" fill="#fff"/></svg></span>
+        <span>Local<span class="brand-accent">Tube</span></span>
+      </a>
+    </div>
+    <form id="video-search" class="global-search" role="search">
+      <label class="sr-only" for="query-input">Search YouTube videos</label>
+      <input id="query-input" name="query" type="search" placeholder="Search videos" minlength="2" maxlength="80" required autocomplete="off">
+      <button class="search-submit" type="submit" aria-label="Search YouTube" title="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.7" cy="10.7" r="6.5"/><path d="m15.6 15.6 5.1 5.1"/></svg>
+      </button>
+    </form>
+    <div class="topbar-right">
+      <label class="thumbnail-switch" title="Enable thumbnail images from Google. This preference is stored in this browser.">
+        <input id="show-thumbnails" type="checkbox">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="thumbnail-label">Thumbnails</span>
+      </label>
+      <button id="open-add" type="button" class="create-button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Add video</span>
+      </button>
+    </div>
   </header>
-  <main>
-    <section class="hero">
-      <div>
-        <p class="eyebrow">YOUR VIDEOS, YOUR ALGORITHM</p>
-        <h1>Curate what you watch.<br><em>Own what you learn.</em></h1>
-        <p class="subtitle">A private video library that recommends from your interests, not an advertising profile.</p>
-      </div>
-      <p class="privacy">Your library and preferences live on your Fedora computer. Google still receives requests when you choose to play an embedded YouTube video.</p>
-    </section>
-    <section class="panel" aria-labelledby="add-heading">
-      <h2 id="add-heading">Add a video</h2>
-      <form id="add-form">
-        <label>Video URL or ID<input id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required maxlength="500"></label>
-        <label>Title<input id="title" name="title" placeholder="Understanding reverse engineering" required maxlength="160"></label>
-        <label>Tags, separated by commas<input id="tags" name="tags" placeholder="linux, security, coding" maxlength="300"></label>
-        <button class="primary" type="submit">+ Add</button>
-      </form>
-      <p id="message" role="status" aria-live="polite"></p>
-    </section>
 
-    <section class="panel discover-panel" aria-labelledby="discover-heading">
-      <div class="section-header">
-        <div>
-          <p class="eyebrow">EXPLORE BEYOND YOUR LIBRARY</p>
-          <h2 id="discover-heading">Discover new videos</h2>
-        </div>
-        <button id="reload-feed" type="button" class="secondary">Refresh suggestions</button>
+  <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+    <nav class="sidebar-nav" aria-label="Browse">
+      <button type="button" class="nav-item selected" data-view="home" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10h-6v-7H9v7H3z"/></svg>
+        <span>Home</span>
+      </button>
+      <button type="button" class="nav-item" data-view="explore">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.5 5.1-5.1 2.5 2.5-5.1z"/></svg>
+        <span>Explore</span>
+      </button>
+      <div class="nav-divider"></div>
+      <p class="nav-label">You</p>
+      <button type="button" class="nav-item" data-view="library">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 4v16M11 9h6M11 13h6"/></svg>
+        <span>Your library</span>
+        <span id="library-count" class="nav-count">0</span>
+      </button>
+      <button type="button" class="nav-item" data-view="liked">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21H4V10h4zm0-11 5-7 2 1v6h5l1 2-2 9H8z"/></svg>
+        <span>Liked videos</span>
+      </button>
+      <div class="nav-divider"></div>
+      <p class="nav-label">Personalize</p>
+      <button type="button" id="open-interests" class="nav-item">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg>
+        <span>Manage interests</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="local-badge"><span class="local-dot"></span> Local-first</span>
+      <p>No Google account required. Search and playback still contact YouTube.</p>
+      <span>LocalTube v0.3</span>
+    </div>
+  </aside>
+  <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
+
+  <main id="main" class="main">
+    <div class="feed-controls">
+      <div id="filter-chips" class="filter-chips" aria-label="Filter by topic"></div>
+      <button id="reload-feed" class="icon-button reload" type="button" aria-label="Reload videos" title="Reload videos">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5.6"/></svg>
+      </button>
+    </div>
+    <div class="content-heading">
+      <div>
+        <h1 id="page-title">Recommended</h1>
+        <p id="page-description">Videos based on the topics you explore. Your interests stay on your computer.</p>
       </div>
-      <p class="discover-description">Pick interests or play videos to train your local algorithm. New suggestions come from public YouTube search metadata, without a Google account.</p>
-      <form id="topic-form" class="discover-form">
-        <label for="topic-input">Add an interest</label>
-        <input id="topic-input" name="topic" placeholder="e.g. gameplays, linux, electronics" maxlength="30" required>
-        <button class="primary" type="submit">Add interest</button>
-      </form>
-      <div id="topic-chips" class="topic-chips" aria-label="Selected interests"></div>
-      <form id="video-search" class="discover-form">
-        <label for="query-input">Search YouTube videos</label>
-        <input id="query-input" type="search" name="query" placeholder="Search for videos without signing in..." minlength="2" maxlength="80" required>
-        <button class="primary" type="submit">Search</button>
-      </form>
-      <div class="discover-tools">
-        <button id="back-to-feed" type="button" class="secondary" hidden>← Back to recommendations</button>
-        <label class="thumb-option"><input id="show-thumbnails" type="checkbox"> Show thumbnails (loads images from Google)</label>
-      </div>
-      <p class="discover-description">Searches go from your Fedora computer to YouTube and are cached locally for one hour. Playback contacts Google. No automatic searches happen without saved or selected interests.</p>
-      <p id="discover-status" role="status" aria-live="polite"></p>
-      <div id="discover-results" class="grid"></div>
-    </section>
-    <section>
-      <div class="section-header">
-        <h2>Your videos <span id="count">0</span></h2>
-        <div class="tabs">
-          <button id="recommend-tab" type="button" class="selected">For you</button>
-          <button id="library-tab" type="button">Library</button>
-        </div>
-      </div>
-      <label class="search-label">Search videos and tags<input id="search" type="search" placeholder="Search your library"></label>
-      <div id="videos" class="grid" aria-live="polite"></div>
-      <p id="empty" class="empty">Add a few videos with topics to get started.</p>
-    </section>
+      <button id="back-to-feed" type="button" class="quiet-button" hidden>← Back to home</button>
+    </div>
+    <div id="library-search-wrap" class="library-search-wrap" hidden>
+      <label class="sr-only" for="library-search">Filter saved videos</label>
+      <input id="library-search" type="search" placeholder="Filter your saved videos…">
+    </div>
+    <p id="global-message" class="global-message" role="status" aria-live="polite"></p>
+    <div id="video-grid" class="video-grid" aria-live="polite"></div>
+    <div id="empty-state" class="empty-state" hidden>
+      <div class="empty-icon" aria-hidden="true">▶</div>
+      <h2 id="empty-title">Your feed is ready when you are</h2>
+      <p id="empty-description">Add interests or watch saved videos to start getting recommendations.</p>
+      <button id="empty-action" type="button" class="create-button">Choose interests</button>
+    </div>
+    <p class="feed-footer">LocalTube keeps your library, likes, and interests locally. Enabling thumbnails loads images from Google; playing videos contacts YouTube.</p>
   </main>
-  <dialog id="player-dialog">
-    <div class="player-top">
+
+  <dialog id="add-dialog" class="modal" aria-labelledby="add-title">
+    <div class="dialog-top">
+      <h2 id="add-title">Save a video</h2>
+      <button id="close-add" type="button" class="icon-button" aria-label="Close">✕</button>
+    </div>
+    <p class="dialog-description">Paste a YouTube link to save it locally. This does not require signing in.</p>
+    <form id="add-form" class="stack-form">
+      <label for="url">YouTube URL or video ID</label>
+      <input id="url" name="url" placeholder="https://www.youtube.com/watch?v=…" maxlength="500" required>
+      <label for="title">Title</label>
+      <input id="title" name="title" placeholder="e.g. Learning reverse engineering" maxlength="160" required>
+      <label for="tags">Tags (comma-separated)</label>
+      <input id="tags" name="tags" placeholder="linux, security, coding" maxlength="300">
+      <p id="add-message" role="status" aria-live="polite"></p>
+      <button class="create-button modal-submit" type="submit">Save video</button>
+    </form>
+  </dialog>
+
+  <dialog id="interests-dialog" class="modal" aria-labelledby="interests-title">
+    <div class="dialog-top">
+      <h2 id="interests-title">Your interests</h2>
+      <button id="close-interests" type="button" class="icon-button" aria-label="Close">✕</button>
+    </div>
+    <p class="dialog-description">Pick up to 12 interests. These topics and your viewing signals power your recommendations on this computer.</p>
+    <form id="topic-form" class="interest-form">
+      <label class="sr-only" for="topic-input">New interest</label>
+      <input id="topic-input" name="topic" maxlength="30" placeholder="Gaming, Linux, electronics…" required>
+      <button class="create-button" type="submit">Add</button>
+    </form>
+    <div id="topic-chips" class="selected-topics"></div>
+    <p id="interest-message" role="status" aria-live="polite"></p>
+  </dialog>
+
+  <dialog id="player-dialog" class="player-dialog" aria-labelledby="player-title">
+    <div class="player-header">
       <h2 id="player-title">Video</h2>
-      <button id="close-player" type="button">✕ Close</button>
+      <button id="close-player" type="button" class="icon-button" aria-label="Close video">✕</button>
     </div>
     <div id="player-wrap" class="player-wrap"></div>
-    <p class="warning">Embedded video playback contacts YouTube/Google. The play click is recorded locally for recommendations.</p>
+    <p class="player-notice">YouTube playback contacts Google. A play click is saved locally to improve recommendations.</p>
   </dialog>
 </body>
 </html>
