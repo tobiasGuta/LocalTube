@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>LocalTube — Your videos, your algorithm</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="LocalTube home"><span class="brand-icon">▶</span> LocalTube</a>
+    <span class="pill">LOCAL FIRST · ALPHA</span>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">YOUR VIDEOS, YOUR ALGORITHM</p>
+        <h1>Curate what you watch.<br><em>Own what you learn.</em></h1>
+        <p class="subtitle">A private video library that recommends from your interests, not an advertising profile.</p>
+      </div>
+      <p class="privacy">Your library and preferences live on your Fedora computer. Google still receives requests when you choose to play an embedded YouTube video.</p>
+    </section>
+    <section class="panel" aria-labelledby="add-heading">
+      <h2 id="add-heading">Add a video</h2>
+      <form id="add-form">
+        <label>Video URL or ID<input id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required maxlength="500"></label>
+        <label>Title<input id="title" name="title" placeholder="Understanding reverse engineering" required maxlength="160"></label>
+        <label>Tags, separated by commas<input id="tags" name="tags" placeholder="linux, security, coding" maxlength="300"></label>
+        <button class="primary" type="submit">+ Add</button>
+      </form>
+      <p id="message" role="status" aria-live="polite"></p>
+    </section>
+    <section>
+      <div class="section-header">
+        <h2>Your videos <span id="count">0</span></h2>
+        <div class="tabs">
+          <button id="recommend-tab" type="button" class="selected">For you</button>
+          <button id="library-tab" type="button">Library</button>
+        </div>
+      </div>
+      <label class="search-label">Search videos and tags<input id="search" type="search" placeholder="Search your library"></label>
+      <div id="videos" class="grid" aria-live="polite"></div>
+      <p id="empty" class="empty">Add a few videos with topics to get started.</p>
+    </section>
+  </main>
+  <dialog id="player-dialog">
+    <div class="player-top">
+      <h2 id="player-title">Video</h2>
+      <button id="close-player" type="button">✕ Close</button>
+    </div>
+    <div id="player-wrap" class="player-wrap"></div>
+    <p class="warning">Embedded video playback contacts YouTube/Google. The play click is recorded locally for recommendations.</p>
+  </dialog>
+</body>
+</html>
