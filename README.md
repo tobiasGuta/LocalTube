@@ -2,6 +2,22 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+## New in v0.6 — watch progress and a fresher feed
+
+- **Real playback progress:** Official YouTube IFrame API loads only when you click Play. While it reports PLAYING, LocalTube samples every five seconds, ignoring jumps from seeking and buffering. Watch seconds remain approximate.
+- **Resume videos:** Last position is saved in SQLite, with progress bars on saved thumbnails.
+- **Watch history:** A new sidebar view shows videos with playback progress and repeat opens.
+- **Completions:** The official player ENDED event increments completion counts; seeking to the end is not the same as finishing.
+- **Local viewing stats:** Manage Interests shows your top watched topics, creators, and aggregate watch time. Previously saved manual links may not include channel metadata.
+- **Richer discovery:** Up to 18 videos per topic, across three topics. Clicking Refresh rotates search queries (at most every 30 seconds). Each query is cached locally for one hour.
+- **Better ranking:** Approximate playing time, repeat opens, completions, and creator affinity join likes and manually chosen topics.
+- **Privacy:** Video playback loads a YouTube embed and the remote YouTube IFrame API after you click Play. Position and preferences stay on Fedora. No remote scripts load on the homepage.
+- **Fallback:** If the official player API cannot load, embedded playback is available but tracking is disabled for that session.
+- **SQLite migration:** Your existing database and saved videos are preserved. Still back up data/localtube.db before major updates.
+
+**Limitations:** Playback tracking is approximate. It can miss seconds if the browser closes abruptly, and it cannot tell whether you're actively paying attention to a video playing in the background. Livestream durations may differ from recorded videos.
+
+## Previous releases
 ## What's new in v0.5: one-click likes
 
 - Tap the **thumbs-up icon** beside any video card's three-dot menu to like it instantly.

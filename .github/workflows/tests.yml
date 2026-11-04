@@ -16,4 +16,6 @@ jobs:
       - name: Test backend and frontend contracts
         run: python -m pytest -q
       - name: Check JavaScript syntax
-        run: node --check static/app.js
+        run: |
+          node --check static/app.js
+          node --check static/player.js

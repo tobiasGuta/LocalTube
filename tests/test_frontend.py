@@ -37,7 +37,7 @@ def test_video_first_layout_has_required_controls():
         "interests-dialog", "topic-form", "topic-chips", "library-search",
         "page-title", "global-message",
     }.issubset(parser.ids)
-    assert parser.scripts == ["/static/app.js"]  # No remote JavaScript.
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]  # No remote JavaScript.
     assert parser.images == []  # No Google images on initial HTML load.
 
 
@@ -51,7 +51,10 @@ def test_js_only_uses_known_elements_and_opt_in_thumbnails():
     assert 'thumbnails: false' in js  # Opt-in default.
     assert '"https://i.ytimg.com/vi/"' in js
     assert 'if (state.thumbnails && validId(video.id))' in js
-    assert 'https://www.youtube-nocookie.com/embed/' in js
+    player_js = (ROOT / 'static' / 'player.js').read_text(encoding='utf-8')
+    assert 'https://www.youtube-nocookie.com/embed/' in player_js
+    assert 'https://www.youtube.com/iframe_api' in player_js
+    assert 'id="watch-status"' in HTML.read_text(encoding='utf-8')
     assert "16/9" in CSS.read_text(encoding="utf-8")
 
 
@@ -59,6 +62,7 @@ def test_javascript_is_syntactically_valid_if_node_is_available():
     if not shutil.which("node"):
         return
     subprocess.run(["node", "--check", str(JS)], check=True)
+    subprocess.run(["node", "--check", str(ROOT / "static" / "player.js")], check=True)
 
 
 def test_one_click_like_controls_in_cards_and_player():
@@ -84,3 +88,23 @@ def test_one_click_like_controls_in_cards_and_player():
     assert "await loadView(" not in rate_method
     assert 'player-wrap").replaceChildren' not in rate_method
     assert "renderGrid();" in rate_method
+
+
+def test_tracking_controls_are_local_and_not_loaded_before_play():
+    html = HTML.read_text(encoding="utf-8")
+    player = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
+    app = JS.read_text(encoding="utf-8")
+    assert 'data-view="history"' in html
+    assert 'id="watch-stats"' in html
+    assert 'id="watch-status"' in html
+    assert "window.LocalTubePlayer.open(video, saved)" in app
+    assert "window.LocalTubePlayer.close()" in app
+    assert "/api/stats" in app
+    assert "?refresh=true" in app
+    assert 'script.src = "https://www.youtube.com/iframe_api"' in player
+    assert 'https://www.youtube-nocookie.com/embed/' in player
+    assert "video.watched_seconds" in app
+    assert "resume_position" in app
+    assert "sample(session)" in player
+    assert 'method: "PUT"' in player
+    assert "model_validator" not in player

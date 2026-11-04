@@ -1,7 +1,7 @@
 """Explainable, local-first content ranking for LocalTube.
 
-No ML downloads or external services. Play *clicks* (not watch duration), likes,
-manual topics, and limited title-token overlap are the only signals used.
+No ML downloads or external services. Signals include likes, approximate
+playing time, completions, repeat opens, creator affinity and title words.
 """
 from __future__ import annotations
 
@@ -45,7 +45,9 @@ def build_profile(topics: list[str], library: list[dict], *, now: datetime | Non
     now = now or datetime.now(timezone.utc)
     tag_weights: dict[str, float] = defaultdict(float)
     text_weights: dict[str, float] = defaultdict(float)
+    creator_weights: dict[str, float] = defaultdict(float)
     liked: set[str] = set()
+    watched: set[str] = set()
     played: set[str] = set()
     chosen = {topic.strip().lower() for topic in topics if topic.strip()}
 
@@ -56,6 +58,9 @@ def build_profile(topics: list[str], library: list[dict], *, now: datetime | Non
         tags = [tag.strip().lower() for tag in video.get("tags", []) if tag.strip()]
         rating = int(video.get("rating", 0))
         plays = max(0, min(8, int(video.get("plays", 0))))
+        watched_seconds = max(0.0, min(14400.0, float(video.get("watched_seconds") or 0)))
+        completions = max(0, min(4, int(video.get("completions") or 0)))
+        creator = str(video.get("channel") or "").strip().casefold()
         fresh = _recent_factor(video, now)
         if rating == -1:
             # A dislike should not suppress an entire topic on its own.
@@ -64,19 +69,26 @@ def build_profile(topics: list[str], library: list[dict], *, now: datetime | Non
             for term in words(video.get("title", "")):
                 text_weights[term] -= 0.4 * fresh
             continue
-        boost = fresh * (0.6 + math.log1p(plays) * 2.2 + (6.0 if rating == 1 else 0))
+        watch_signal = min(8.0, math.log1p(watched_seconds / 60.0) * 2.0)
+        boost = fresh * (0.6 + math.log1p(plays) * 1.3 + watch_signal
+                         + 2.5 * completions + (6.0 if rating == 1 else 0))
+        if creator and (rating == 1 or watched_seconds >= 60):
+            creator_weights[creator] += min(14.0, boost)
         for tag in tags:
             tag_weights[tag] += boost
             if rating == 1:
                 liked.add(tag)
             if plays:
                 played.add(tag)
-        if plays or rating == 1:
+            if watched_seconds > 0:
+                watched.add(tag)
+        if plays or rating == 1 or watched_seconds > 0:
             for term in words(video.get("title", "")):
                 text_weights[term] += fresh * (0.35 * math.log1p(plays) + (1.6 if rating == 1 else 0))
 
     return {"tags": dict(tag_weights), "terms": dict(text_weights),
-            "chosen": chosen, "liked": liked, "played": played}
+            "creators": dict(creator_weights), "chosen": chosen,
+            "liked": liked, "played": played, "watched": watched}
 
 
 def topics_to_search(profile: dict, limit: int = 3) -> list[str]:
@@ -90,6 +102,8 @@ def topics_to_search(profile: dict, limit: int = 3) -> list[str]:
 def _reason(tag: str, profile: dict) -> str:
     if tag in profile["liked"]:
         return f"Because you liked {tag} videos"
+    if tag in profile.get("watched", set()):
+        return f"Because you watched {tag} videos"
     if tag in profile["played"]:
         return f"Based on your {tag} play clicks"
     if tag in profile["chosen"]:
@@ -119,13 +133,14 @@ def rank_feed(batches: list[tuple[str, list[dict]]], profile: dict,
             channel = (item.get("channel") or "").strip().casefold()
             interest = max(0.0, profile["tags"].get(topic, 0.0))
             # Strong favorites matter, but their value diminishes as the feed fills.
-            interest /= 1.0 + 0.34 * topic_counts[topic]
+            interest /= 1.0 + 1.6 * topic_counts[topic]
             matches = sum(profile["terms"].get(w, 0.0)
                           for w in words(item.get("title", "")))
             matches = max(-6.0, min(10.0, matches))
-            score = 1.9 * interest + 1.0 * matches
+            creator_affinity = min(7.0, profile.get("creators", {}).get(channel, 0.0))
+            score = 1.9 * interest + matches + creator_affinity
             if channel:
-                score -= 3.0 * channel_counts[channel]
+                score -= 5.0 * channel_counts[channel]
             score -= item["_position"] * 0.025
             if score > best_score:
                 best_id, best_score = vid, score

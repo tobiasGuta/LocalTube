@@ -138,8 +138,15 @@ function renderCard(video) {
   const hoverPlay = make("span", "thumb-play");
   hoverPlay.append(playIcon());
   thumbnail.append(hoverPlay);
-  const duration = formatDuration(video.duration);
+  const duration = formatDuration(video.duration_seconds || video.duration);
   if (duration) thumbnail.append(make("span", "duration", duration));
+  if (saved && saved.resume_position > 0 && saved.duration_seconds > 0) {
+    const progress = make("span", "thumbnail-progress");
+    const fill = make("span", "thumbnail-progress-fill");
+    fill.style.width = Math.min(100, Math.max(0, 100 * saved.resume_position / saved.duration_seconds)) + "%";
+    progress.append(fill);
+    thumbnail.append(progress);
+  }
 
   const bottom = make("div", "video-card-body");
   const avatar = make("div", "avatar", channelOf(video).trim().slice(0, 1).toUpperCase() || "L");
@@ -150,7 +157,11 @@ function renderCard(video) {
   const channel = make("p", "channel-name", channelOf(video));
   const details = make("p", "video-details");
   if (video.plays !== undefined) {
-    details.textContent = video.plays + " play clicks" + (video.rating === 1 ? " · Liked" : "");
+    const watched = Number(video.watched_seconds) || 0;
+    const resume = Number(video.resume_position) || 0;
+    details.textContent = watched >= 30
+      ? (Math.round(watched / 60) || 1) + " min watched" + (resume >= 5 ? " · Resume " + formatDuration(resume) : "")
+      : video.plays + " play clicks" + (video.rating === 1 ? " · Liked" : "");
   } else {
     details.textContent = video.reason || "Suggested for you";
   }
@@ -185,13 +196,15 @@ function filteredResults() {
   let videos;
   if (state.view === "library") videos = state.saved;
   else if (state.view === "liked") videos = state.saved.filter(v => v.rating === 1);
+  else if (state.view === "history") videos = state.saved.filter(v => v.last_watched_at)
+    .sort((a,b) => (b.last_watched_at || "").localeCompare(a.last_watched_at || ""));
   else videos = state.results;
 
   if (state.filter !== "All") {
     const filter = state.filter.toLowerCase();
     videos = videos.filter(v => (v.tags || []).some(tag => tag.toLowerCase() === filter));
   }
-  if ((state.view === "library" || state.view === "liked") && $("library-search").value.trim()) {
+  if (["library", "liked", "history"].includes(state.view) && $("library-search").value.trim()) {
     const term = $("library-search").value.trim().toLowerCase();
     videos = videos.filter(v => (v.title + " " + (v.tags || []).join(" ")).toLowerCase().includes(term));
   }
@@ -206,7 +219,7 @@ function renderFilters() {
     return;
   }
   root.hidden = false;
-  const collection = state.view === "library" || state.view === "liked"
+  const collection = ["library", "liked", "history"].includes(state.view)
     ? state.saved : state.results;
   const items = ["All"];
   const available = new Set(collection.flatMap(v => v.tags || []).map(t => t.toLowerCase()));
@@ -241,7 +254,8 @@ function renderGrid() {
     explore: ["Nothing to explore yet", "Choose an interest or search for something you want to watch.", "Choose interests"],
     search: ["No videos found", "Try a different search phrase, or search for a broader topic.", "Go home"],
     library: ["Your library is empty", "Save a video to make it easy to find again.", "Add video"],
-    liked: ["No liked videos yet", "Tap the thumbs-up beside a video to like it instantly.", "Go home"]
+    liked: ["No liked videos yet", "Tap the thumbs-up beside a video to like it instantly.", "Go home"],
+    history: ["Nothing watched yet", "Watch a video to begin building local watch history.", "Go home"]
   }[state.view];
   $("empty-title").textContent = state.filter !== "All" ? "No videos in " + state.filter : empty[0];
   $("empty-description").textContent = state.filter !== "All" ? "Try selecting All or another topic." : empty[1];
@@ -260,13 +274,14 @@ function renderShell() {
     explore: ["Explore videos", "Discover something new without signing in to Google."],
     search: ["Search results", 'Results for "' + state.query + '"'],
     library: ["Your library", "Saved videos are kept on your Fedora computer."],
-    liked: ["Liked videos", "The videos you have marked as favorites."]
+    liked: ["Liked videos", "The videos you have marked as favorites."],
+    history: ["Watch history", "Videos you played, your viewing time and where to resume."]
   }[state.view];
   $("page-title").textContent = settings[0];
   $("page-description").textContent = settings[1];
-  $("library-search-wrap").hidden = state.view !== "library" && state.view !== "liked";
+  $("library-search-wrap").hidden = !["library", "liked", "history"].includes(state.view);
   $("back-to-feed").hidden = state.view !== "search";
-  $("reload-feed").hidden = state.view === "search" || state.view === "library" || state.view === "liked";
+  $("reload-feed").hidden = ["search", "library", "liked", "history"].includes(state.view);
   renderFilters();
   renderGrid();
 }
@@ -274,6 +289,34 @@ function renderShell() {
 async function loadSaved() {
   state.saved = await api("/api/videos");
   $("library-count").textContent = state.saved.length;
+}
+
+async function loadWatchStats() {
+  const root = $("watch-stats");
+  root.replaceChildren();
+  try {
+    const stats = await api("/api/stats");
+    const mins = Math.round(stats.total_watched_seconds / 60);
+    const total = make("div", "watch-stat-total",
+      mins + " minutes of approximate viewing · " + stats.total_completions + " completed videos");
+    root.append(total);
+    function list(title, items) {
+      const section = make("div", "watch-stat-section");
+      section.append(make("h4", "", title));
+      if (!items.length) section.append(make("p", "dialog-description", "Nothing tracked yet."));
+      for (const item of items) {
+        const row = make("div", "watch-stat-row");
+        row.append(make("span", "", item.name),
+                   make("span", "", Math.round(item.watched_seconds / 60) + " min"));
+        section.append(row);
+      }
+      root.append(section);
+    }
+    list("Most-watched topics", stats.topics);
+    list("Most-watched creators", stats.creators);
+  } catch (err) {
+    root.replaceChildren(make("p", "dialog-description", "Stats aren't available: " + err.message));
+  }
 }
 
 async function loadInsights() {
@@ -319,17 +362,17 @@ async function loadTopics() {
     container.append(chip);
   }
   if (!state.topics.length) container.append(make("p", "dialog-description", "No interests added yet. Your saved video tags also help recommendations."));
-  await loadInsights();
+  await Promise.all([loadInsights(), loadWatchStats()]);
 }
 
-async function loadView(view) {
+async function loadView(view, {refresh = false} = {}) {
   state.view = view;
   state.filter = "All";
   state.query = "";
   const token = ++state.requestToken;
   closeMobileSidebar();
   notice("");
-  if (view === "library" || view === "liked") {
+  if (view === "library" || view === "liked" || view === "history") {
     try {
       await loadSaved();
       if (token === state.requestToken) renderShell();
@@ -337,10 +380,10 @@ async function loadView(view) {
     return;
   }
   state.results = [];
-  notice("Finding videos for you…");
+  notice(refresh ? "Finding a fresh mix of videos…" : "Finding videos for you…");
   renderShell();
   try {
-    const feed = await api("/api/feed");
+    const feed = await api("/api/feed" + (refresh ? "?refresh=true" : ""));
     if (token !== state.requestToken) return;
     state.results = feed.videos;
     notice(feed.topics.length ? "" : "Add an interest or play a saved video to start discovering.");
@@ -380,7 +423,9 @@ async function ensureSaved(video) {
   const tags = (video.tags || []).filter(tag => typeof tag === "string").slice(0, 8).map(t => t.slice(0, 30)).join(", ");
   try {
     await api("/api/videos", {method: "POST", body: JSON.stringify({
-      url: video.id, title: video.title.slice(0, 160), tags
+      url: video.id, title: video.title.slice(0, 160), tags,
+      channel: (video.channel || "").slice(0, 100),
+      duration_seconds: Number.isFinite(video.duration) ? video.duration : (video.duration_seconds || 0)
     })});
   } catch (err) {
     if (err.status !== 409) throw err;
@@ -459,14 +504,8 @@ async function play(video) {
     state.currentVideo = video;
     $("player-title").textContent = video.title;
     updatePlayerLike();
-    const frame = make("iframe");
-    frame.title = video.title;
-    frame.src = "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(video.id) + "?autoplay=1&rel=0";
-    frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
-    frame.allowFullscreen = true;
-    frame.referrerPolicy = "strict-origin-when-cross-origin";
-    $("player-wrap").replaceChildren(frame);
-    $("player-dialog").showModal();
+    const saved = state.saved.find(item => item.id === video.id);
+    await window.LocalTubePlayer.open(video, saved);
     renderGrid();
   } catch (err) { notice(err.message, true); }
 }
@@ -487,7 +526,7 @@ $("sidebar-toggle").addEventListener("click", () => {
 });
 $("sidebar-backdrop").addEventListener("click", closeMobileSidebar);
 document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventListener("click", () => loadView(nav.dataset.view)));
-$("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home"));
+$("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("back-to-feed").addEventListener("click", () => loadView("home"));
 $("video-search").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -508,7 +547,7 @@ $("empty-action").addEventListener("click", () => {
     renderShell();
   } else if (state.view === "library") {
     $("add-dialog").showModal();
-  } else if (state.view === "liked" || state.view === "search") {
+  } else if (state.view === "liked" || state.view === "search" || state.view === "history") {
     loadView("home");
   } else {
     $("interests-dialog").showModal();
@@ -539,6 +578,7 @@ $("open-interests").addEventListener("click", () => {
   closeMobileSidebar();
   $("interests-dialog").showModal();
   loadInsights();
+  loadWatchStats();
 });
 $("close-interests").addEventListener("click", () => $("interests-dialog").close());
 $("topic-form").addEventListener("submit", async (event) => {
@@ -563,11 +603,14 @@ $("close-player").addEventListener("click", () => $("player-dialog").close());
 $("player-like").addEventListener("click", () => {
   if (state.currentVideo) toggleLike(state.currentVideo);
 });
-$("player-dialog").addEventListener("close", () => {
+$("player-dialog").addEventListener("close", async () => {
+  await window.LocalTubePlayer.close();
   state.currentVideo = null;
   updatePlayerLike();
   $("player-wrap").replaceChildren();
+  try { await loadSaved(); } catch (_) {}
   if (state.view === "home" || state.view === "explore") loadView(state.view);
+  else renderShell();
 });
 for (const id of ["player-dialog", "add-dialog", "interests-dialog"]) {
   $(id).addEventListener("click", (event) => {

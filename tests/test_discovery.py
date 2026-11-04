@@ -27,11 +27,11 @@ def test_feed_search_cache_and_save(tmp_path, monkeypatch):
         assert len(feed.json()["videos"]) == 2
         assert feed.json()["videos"][0]["reason"] == "Because you chose linux"
         assert client.get("/api/feed").status_code == 200
-        assert calls == [("linux", 8)]
+        assert calls == [("linux", 18)]
         search = client.get("/api/discover", params={"q": "linux"})
         assert search.status_code == 200
         assert search.json()[0]["channel"] == "Creator"
-        assert calls == [("linux", 8)]  # Cached for one hour.
+        assert calls == [("linux", 18)]  # Cached for one hour.
         assert client.post("/api/videos", json={
             "url": "dQw4w9WgXcQ", "title": "A Linux introduction", "tags": "linux"
         }).status_code == 201

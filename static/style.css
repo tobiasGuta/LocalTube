@@ -202,3 +202,16 @@ body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-divider,body.sideb
 .player-like.is-liked{border-color:#8e6ee3;background:#362a50}
 .like-hint{font-size:12px;line-height:1.5;color:#aaa}
 @media(max-width:510px){.card-like{width:33px;height:33px}}
+
+
+/* v0.6: playback progress, history, and watch analytics. */
+.thumbnail-progress{position:absolute;z-index:2;left:0;right:0;bottom:0;height:4px;background:#ffffff60}
+.thumbnail-progress-fill{display:block;height:100%;background:#a28aff}
+.watch-status{padding:6px 1px 0;margin:7px 0 0;font-size:12px;color:#c9baff}
+.watch-stats{display:grid;gap:12px;margin-top:15px}
+.watch-stat-total{background:#2b2637;border:1px solid #554572;border-radius:10px;padding:12px;font-weight:700;color:#e4dcff}
+.watch-stat-section{border:1px solid #393939;padding:12px;border-radius:10px}
+.watch-stat-section h4{font-size:13px;margin:0 0 9px}
+.watch-stat-row{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;color:#ccc}
+.watch-stat-row span:last-child{white-space:nowrap;color:#baa8ff}
+.stats-title{font-size:14px;margin:24px 0 7px}

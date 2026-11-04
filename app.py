@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sqlite3
@@ -14,7 +15,7 @@ from urllib.parse import urlparse, parse_qs
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from discovery import search_youtube
 from recommender import build_profile, topics_to_search, rank_feed
 
@@ -49,6 +50,25 @@ def init_db():
         if "last_activity_at" not in columns:
             db.execute("ALTER TABLE videos ADD COLUMN last_activity_at TEXT")
 
+        additions = {
+            "channel": "TEXT NOT NULL DEFAULT ''",
+            "duration_seconds": "REAL NOT NULL DEFAULT 0",
+            "watched_seconds": "REAL NOT NULL DEFAULT 0",
+            "resume_position": "REAL NOT NULL DEFAULT 0",
+            "completions": "INTEGER NOT NULL DEFAULT 0",
+            "last_watched_at": "TEXT",
+        }
+        for column, sql_type in additions.items():
+            if column not in columns:
+                db.execute(f"ALTER TABLE videos ADD COLUMN {column} {sql_type}")
+        db.execute("""CREATE TABLE IF NOT EXISTS feed_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            refresh_cursor INTEGER NOT NULL DEFAULT 0,
+            last_refresh_at INTEGER NOT NULL DEFAULT 0
+        )""")
+        db.execute("""INSERT OR IGNORE INTO feed_settings(id) VALUES(1)""")
+
+
 
 def parse_id(raw):
     raw = raw.strip()
@@ -80,7 +100,10 @@ def as_video(row):
     return {
         "id": row["id"], "title": row["title"], "tags": json.loads(row["tags"]),
         "created_at": row["created_at"], "plays": row["plays"], "rating": row["rating"],
-        "last_activity_at": row["last_activity_at"]
+        "last_activity_at": row["last_activity_at"],
+        "channel": row["channel"], "duration_seconds": row["duration_seconds"],
+        "watched_seconds": row["watched_seconds"], "resume_position": row["resume_position"],
+        "completions": row["completions"], "last_watched_at": row["last_watched_at"]
     }
 
 
@@ -88,6 +111,24 @@ class NewVideo(BaseModel):
     url: str = Field(min_length=1, max_length=500)
     title: str = Field(min_length=1, max_length=160)
     tags: str = Field(default="", max_length=300)
+    channel: str = Field(default="", max_length=100)
+    duration_seconds: float = Field(default=0.0, ge=0, le=86400)
+
+
+class WatchProgress(BaseModel):
+    position_seconds: float = Field(ge=0, le=86400)
+    duration_seconds: float = Field(ge=0, le=86400)
+    watched_delta: float = Field(ge=0, le=15)
+    ended: bool = False
+
+    @model_validator(mode="after")
+    def valid_progress(self):
+        if not all(math.isfinite(v) for v in
+                   (self.position_seconds, self.duration_seconds, self.watched_delta)):
+            raise ValueError("Progress values must be finite")
+        if self.duration_seconds > 0 and self.position_seconds > self.duration_seconds + 3:
+            raise ValueError("Position exceeds duration")
+        return self
 
 
 class Feedback(BaseModel):
@@ -104,7 +145,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="LocalTube", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="LocalTube", version="0.6.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -134,9 +175,10 @@ def add_video(video: NewVideo):
         raise HTTPException(400, "Use at most eight tags of up to 30 characters")
     with connect() as db:
         try:
-            db.execute("INSERT INTO videos(id,title,tags,created_at) VALUES(?,?,?,?)", (
+            db.execute("INSERT INTO videos(id,title,tags,created_at,channel,duration_seconds) VALUES(?,?,?,?,?,?)", (
                 video_id, title, json.dumps(tags),
-                datetime.now(timezone.utc).isoformat(timespec="seconds")
+                datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                video.channel.strip(), video.duration_seconds
             ))
         except sqlite3.IntegrityError as exc:
             raise HTTPException(409, "This video is already saved") from exc
@@ -166,6 +208,70 @@ def feedback(video_id: str, value: Feedback):
             raise HTTPException(404, "Video not found")
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
 
+
+
+
+@app.put("/api/videos/{video_id}/progress")
+def update_progress(video_id: str, progress: WatchProgress):
+    """Record playing-time deltas, not seeking or elapsed wall-clock time.
+
+    The browser sends a heartbeat while the official IFrame API says PLAYING.
+    The backend validates bounds. No video data is sent to other services.
+    """
+    with connect() as db:
+        old = db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone()
+        if old is None:
+            raise HTTPException(404, "Video not found")
+        duration = progress.duration_seconds or old["duration_seconds"]
+        if progress.ended and duration <= 0:
+            raise HTTPException(422, "Cannot complete video without known duration")
+        position = 0.0 if progress.ended else progress.position_seconds
+        # An explicit end signal marks completion; simply seeking to the end does not.
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        db.execute(
+            """UPDATE videos
+               SET duration_seconds=?, resume_position=?, watched_seconds=watched_seconds+?,
+                   completions=completions+?, last_watched_at=?, last_activity_at=?
+               WHERE id=?""",
+            (duration, position, progress.watched_delta, int(progress.ended),
+             stamp, stamp, video_id),
+        )
+        return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
+
+
+@app.get("/api/history")
+def watch_history():
+    with connect() as db:
+        rows = db.execute(
+            """SELECT * FROM videos WHERE last_watched_at IS NOT NULL
+               ORDER BY last_watched_at DESC, watched_seconds DESC, id"""
+        ).fetchall()
+    return [as_video(row) for row in rows]
+
+
+@app.get("/api/stats")
+def watch_stats():
+    """Aggregated watch seconds from progress heartbeats, all stored locally."""
+    saved = videos()
+    topics, channels = {}, {}
+    for video in saved:
+        seconds = video["watched_seconds"]
+        if seconds <= 0:
+            continue
+        for tag in video["tags"]:
+            topics[tag] = topics.get(tag, 0) + seconds
+        if video["channel"]:
+            channels[video["channel"]] = channels.get(video["channel"], 0) + seconds
+    def summarize(data):
+        return [{"name": name, "watched_seconds": round(seconds)}
+                for name, seconds in sorted(data.items(), key=lambda x: (-x[1], x[0]))[:8]]
+    return {
+        "total_watched_seconds": round(sum(v["watched_seconds"] for v in saved)),
+        "total_completions": sum(v["completions"] for v in saved),
+        "topics": summarize(topics),
+        "creators": summarize(channels),
+        "note": "Approximate playback time; seeking and buffering aren't counted as watches.",
+    }
 
 @app.delete("/api/videos/{video_id}", status_code=204)
 def delete(video_id: str):
@@ -216,7 +322,7 @@ def _search_cached(query: str) -> list[dict]:
     if cached and now - cached["fetched_at"] < DISCOVERY_CACHE_SECONDS:
         return json.loads(cached["payload"])
     try:
-        results = search_youtube(query, limit=8)
+        results = search_youtube(query, limit=18)
     except Exception as exc:
         if cached:
             return json.loads(cached["payload"])
@@ -288,25 +394,41 @@ def profile():
 
 
 @app.get("/api/feed")
-def feed():
-    """Personalize public search results with local signals and topic diversity."""
+def feed(refresh: bool = False):
+    """More candidates, rotating related searches, and local reranking."""
     interests = _profile()
     topics = topics_to_search(interests, limit=3)
     if not topics:
         return {"topics": [], "videos": []}
+
+    with connect() as db:
+        row = db.execute("SELECT refresh_cursor,last_refresh_at FROM feed_settings WHERE id=1").fetchone()
+        cursor = row["refresh_cursor"]
+        now = int(time.time())
+        if refresh and now - row["last_refresh_at"] >= 30:
+            cursor += 1
+            db.execute(
+                "UPDATE feed_settings SET refresh_cursor=?,last_refresh_at=? WHERE id=1",
+                (cursor, now),
+            )
+
+    variants = ("", " latest", " highlights", " 2026", " tutorial")
     batches = []
     for topic in topics:
+        # Rotate the *query*, not just the same 8 returned items each refresh.
+        query = topic + variants[cursor % len(variants)]
         try:
-            batches.append((topic, _search_cached(topic)))
+            batches.append((topic, _search_cached(query)))
         except HTTPException:
             continue
     if not batches:
         raise HTTPException(
-            502, "YouTube discovery is unavailable right now. Your library still works."
+            502, "YouTube discovery is unavailable right now. Your saved library still works."
         )
     with connect() as db:
         seen = {row["id"] for row in db.execute("SELECT id FROM videos")}
     return {
         "topics": topics,
-        "videos": rank_feed(batches, interests, seen, limit=18),
+        "videos": rank_feed(batches, interests, seen, limit=24),
+        "cursor": cursor,
     }

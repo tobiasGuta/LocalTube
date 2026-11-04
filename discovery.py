@@ -9,7 +9,7 @@ def search_youtube(query: str, limit: int = 8) -> list[dict]:
     """Search with yt-dlp. YouTube sees requests from the server IP."""
     from yt_dlp import YoutubeDL
 
-    limit = max(1, min(int(limit), 12))
+    limit = max(1, min(int(limit), 20))
     options = {
         "quiet": True, "no_warnings": True, "skip_download": True,
         "extract_flat": True, "noplaylist": True, "ignoreerrors": True,
