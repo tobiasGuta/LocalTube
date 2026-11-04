@@ -114,13 +114,14 @@ for (const entry of [["recommend-tab","recommend"], ["library-tab","library"]]) 
 }
 el("add-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const b = event.currentTarget.querySelector("button");
+  const form = event.currentTarget;
+  const b = form.querySelector("button");
   b.disabled = true;
   try {
     await request("/api/videos", {
-      method:"POST", body:JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))
+      method:"POST", body:JSON.stringify(Object.fromEntries(new FormData(form)))
     });
-    event.currentTarget.reset();
+    form.reset();
     status("Added! Play or rate some videos to customize recommendations.");
     await refresh();
   } catch (e) { status(e.message, true); }
