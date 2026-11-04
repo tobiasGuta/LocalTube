@@ -7,6 +7,7 @@
   <title>LocalTube — Your videos, your algorithm</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
+  <script src="/static/discovery.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -31,6 +32,35 @@
         <button class="primary" type="submit">+ Add</button>
       </form>
       <p id="message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel discover-panel" aria-labelledby="discover-heading">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow">EXPLORE BEYOND YOUR LIBRARY</p>
+          <h2 id="discover-heading">Discover new videos</h2>
+        </div>
+        <button id="reload-feed" type="button" class="secondary">Refresh suggestions</button>
+      </div>
+      <p class="discover-description">Pick interests or play videos to train your local algorithm. New suggestions come from public YouTube search metadata, without a Google account.</p>
+      <form id="topic-form" class="discover-form">
+        <label for="topic-input">Add an interest</label>
+        <input id="topic-input" name="topic" placeholder="e.g. gameplays, linux, electronics" maxlength="30" required>
+        <button class="primary" type="submit">Add interest</button>
+      </form>
+      <div id="topic-chips" class="topic-chips" aria-label="Selected interests"></div>
+      <form id="video-search" class="discover-form">
+        <label for="query-input">Search YouTube videos</label>
+        <input id="query-input" type="search" name="query" placeholder="Search for videos without signing in..." minlength="2" maxlength="80" required>
+        <button class="primary" type="submit">Search</button>
+      </form>
+      <div class="discover-tools">
+        <button id="back-to-feed" type="button" class="secondary" hidden>← Back to recommendations</button>
+        <label class="thumb-option"><input id="show-thumbnails" type="checkbox"> Show thumbnails (loads images from Google)</label>
+      </div>
+      <p class="discover-description">Searches go from your Fedora computer to YouTube and are cached locally for one hour. Playback contacts Google. No automatic searches happen without saved or selected interests.</p>
+      <p id="discover-status" role="status" aria-live="polite"></p>
+      <div id="discover-results" class="grid"></div>
     </section>
     <section>
       <div class="section-header">
