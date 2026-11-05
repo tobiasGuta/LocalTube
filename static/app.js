@@ -5,7 +5,8 @@ const $ = (id) => document.getElementById(id);
 const state = {
   view: "home", results: [], saved: [], topics: [], filter: "All",
   thumbnails: false, query: "", requestToken: 0,
-  currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true, balance: 65
+  currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true, balance: 65,
+  semanticReady: false
 };
 try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; } catch (_) {}
 try { state.refine = localStorage.getItem("localtube-refined-search") !== "off"; } catch (_) {}
@@ -199,9 +200,13 @@ function renderCard(video) {
         " · Topic +" + show("topic") + " · Title +" + show("title") +
         " · Creator +" + show("creator") +
         " · Discovery +" + show("discovery") +
+        (detail.semantic_positive !== undefined
+          ? " · Semantic +" + show("semantic_positive") +
+            " · Semantic dislike " + show("semantic_negative")
+          : "") +
         " · Other " + (Number(detail.agreement || 0) +
           Number(detail.disliked_similarity || 0) + Number(detail.diversity_penalty || 0)).toFixed(2) +
-        ". Heuristic scores, not probabilities.");
+        ". These are ranking scores, not probabilities.");
     });
   }
   menuAction("Not interested", () => dismissVideo(video));
@@ -280,6 +285,23 @@ function renderGrid() {
   $("empty-title").textContent = state.filter !== "All" ? "No videos in " + state.filter : empty[0];
   $("empty-description").textContent = state.filter !== "All" ? "Try selecting All or another topic." : empty[1];
   $("empty-action").textContent = state.filter !== "All" ? "Show all" : empty[2];
+}
+
+async function checkSemanticAvailability() {
+  const option = $("ranking-model").querySelector('option[value="semantic"]');
+  try {
+    const data = await api("/api/semantic/status");
+    state.semanticReady = Boolean(data.ready);
+    option.disabled = !state.semanticReady;
+    option.textContent = state.semanticReady
+      ? "v0.9 Semantic (local)" : "v0.9 Semantic (setup)";
+    $("semantic-status").textContent = data.message;
+  } catch (_) {
+    state.semanticReady = false;
+    option.disabled = true;
+    $("semantic-status").textContent =
+      "Model status unavailable. v0.8 Content and v0.6 Baseline still work.";
+  }
 }
 
 function feedBalanceLabel(value) {
@@ -427,7 +449,11 @@ async function loadView(view, {refresh = false} = {}) {
     notice(feed.topics.length
       ? (feed.candidates_considered || 0) + " videos evaluated across " +
         (feed.queries_used || 0) + " searches · " +
-        (state.ranker === "baseline" ? "v0.6 baseline" : "v0.8 content-based, balance " + state.balance) +
+        (state.ranker === "baseline" ? "v0.6 baseline"
+          : state.ranker === "semantic"
+            ? "v0.9 local semantics (" + (feed.semantic_examples || 0) +
+              " learning examples), balance " + state.balance
+            : "v0.8 content-based, balance " + state.balance) +
         " ranking"
       : "Add an interest or play a saved video to start discovering.");
     renderShell();
@@ -571,7 +597,9 @@ $("sidebar-backdrop").addEventListener("click", closeMobileSidebar);
 document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventListener("click", () => loadView(nav.dataset.view)));
 $("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("ranking-model").addEventListener("change", (event) => {
-  state.ranker = event.currentTarget.value === "baseline" ? "baseline" : "content";
+  const selection = event.currentTarget.value;
+  state.ranker = selection === "semantic" && state.semanticReady
+    ? "semantic" : selection === "baseline" ? "baseline" : "content";
   updateFeedBalanceControl();
   if (state.view === "home" || state.view === "explore") loadView(state.view);
 });
@@ -696,6 +724,7 @@ document.addEventListener("keydown", (event) => {
 (async () => {
   try {
     await Promise.all([loadSaved(), loadTopics()]);
+    await checkSemanticAvailability();
     await loadView("home");
   } catch (err) {
     notice("LocalTube could not load: " + err.message, true);

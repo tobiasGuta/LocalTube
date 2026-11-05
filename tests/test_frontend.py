@@ -147,3 +147,28 @@ def test_feed_balance_slider_persists_and_preserves_baseline():
     assert '"feed-balance").addEventListener("change"' in script
     assert '.feed-balance-control[hidden]{display:none}' in css
     assert 'v0.8 Content' in html
+
+
+def test_v09_optional_semantic_mode_ui_and_documentation():
+    html = HTML.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    docs = (ROOT / "docs" / "SEMANTIC_ENGINE.md").read_text(encoding="utf-8")
+    assert 'value="semantic" disabled' in html
+    assert 'id="semantic-status"' in html
+    assert 'id="semantic-title"' in html
+    assert 'requirements-semantic.txt' in html
+    assert 'python -m semantic_engine download' in html
+    assert 'LocalTube v0.9' in html
+    assert 'async function checkSemanticAvailability()' in script
+    assert 'api("/api/semantic/status")' in script
+    assert '"semantic" && state.semanticReady' in script
+    assert 'semantic_examples' in script
+    assert 'semantic_positive' in script
+    assert 'Semantic Interest Engine' in docs
+    assert 'pretrained' in docs.lower()
+    assert 'dislike' in docs.lower()
+    assert 'Feed Balance' in docs
+    assert 'clear-cache' in docs
+    parser = PageParser()
+    parser.feed(html)
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]

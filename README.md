@@ -2,6 +2,27 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+## New in v0.9 — optional local Semantic Interest Engine
+
+LocalTube now offers a **v0.9 Semantic (local)** ranking mode, alongside the unchanged **v0.8 Content** (default) and **v0.6 Baseline** algorithms. Semantic mode understands meaning beyond title keyword overlap. It uses a small open-source pretrained English embedding model through FastEmbed/ONNX **on your own computer** and builds an adaptive preference profile from videos you've actually liked, watched or disliked. It does **not** fine-tune the neural network or train ranking weights, and it won't infer interests accurately before meaningful examples exist.
+
+**Installation is deliberately optional.** Normal LocalTube still needs only `requirements.txt`. To enable the local encoder, activate your virtual environment and run:
+
+```bash
+python -m pip install -r requirements-semantic.txt
+python -m semantic_engine download
+python -m semantic_engine status
+```
+
+The `download` command **contacts the model host**, and stores files under ignored `data/models/`. Restart LocalTube and choose **v0.9 Semantic (local)** in the Ranking dropdown. Model files are approximately 67 MB plus runtime dependencies. Local embedding inference and SQLite vector caching do **not** call a remote embeddings service. The normal v0.8 feed doesn't load the model.
+
+Semantic mode can make **up to one additional, opt-in YouTube search** based on a related public candidate title discovered with local similarity. It does so only if the existing **Manage Interests → refined discovery** checkbox is enabled. Disabling that checkbox prevents the extra semantic query and all liked-title/creator queries, while preserving local semantic reranking. YouTube discovery, playback and thumbnails retain their earlier network privacy trade-offs.
+
+**Learn how it works:** [docs/SEMANTIC_ENGINE.md](docs/SEMANTIC_ENGINE.md) explains the algorithm and equations, example weights, candidate discovery, API/SQLite schema, licensing, limitations, how to improve it, troubleshooting and private data management. It is written for developers and students reading the project.
+
+**Developers:** Try `/api/feed?ranker=semantic&refine=false&balance=65`, compare `/api/feed?ranker=content` on the same candidates, and inspect per-video `score_breakdown`. Use `python -m semantic_engine clear-cache` to delete locally cached *vectors* without deleting your videos.
+
+---
 ## New in v0.8 — Feed Balance
 
 - **Focused ↔ Explore** slider beside the ranking selector, with a 0–100 range and 5-point increments. Default **Balanced · 65** preserves the v0.7 content ranker's existing behavior.
@@ -134,9 +155,10 @@ Tests use mocked YouTube results and need no Google account or live YouTube acce
 3. Responsive video-first UI — v0.3.
 4. Explainable heuristics and watch signals — v0.4–v0.6.
 5. TF-IDF candidate expansion and comparable rankers — v0.7.
-6. Adjustable feed relevance/diversity balance — **v0.8**.
-7. Evaluate ranking with impression/feedback data, then consider learned weights.
-8. Channel subscriptions and more diverse discovery.
-9. Authentication and secure LAN/Tailscale access, then home server migration.
+6. Adjustable feed relevance/diversity balance — v0.8.
+7. Optional local semantic preference engine — **v0.9**.
+8. Evaluate ranking with impression/feedback data, then consider learned weights.
+9. Channel subscriptions and more diverse discovery.
+10. Authentication and secure LAN/Tailscale access, then home server migration.
 
 MIT licensed.

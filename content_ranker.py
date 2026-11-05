@@ -56,6 +56,7 @@ def rank_content(
     *,
     limit: int = 24,
     balance: int = 65,
+    semantic_scores: dict[str, dict[str, float]] | None = None,
 ) -> list[dict]:
     """Rank candidate videos using explainable bounded features and greedy variety.
 
@@ -141,6 +142,13 @@ def rank_content(
             "agreement": round(0.3 * agreement, 3),
             "disliked_similarity": round(-2.0 * negative, 3),
         }
+        if semantic_scores is not None:
+            # Do not mutate the caller's feature dictionary.
+            semantic = semantic_scores.get(vid, {})
+            features[vid]["semantic_positive"] = round(
+                float(semantic.get("semantic_positive", 0.0)), 3)
+            features[vid]["semantic_negative"] = round(
+                float(semantic.get("semantic_negative", 0.0)), 3)
 
     selected: list[dict] = []
     topic_count: dict[str, int] = defaultdict(int)
@@ -166,7 +174,9 @@ def rank_content(
             best_score - sum(features[best_id].values()), 3)}
         # Explain the most specific evidence rather than always naming a broad
         # topic: the topic score can be largest even for an exact-title match.
-        if parts["title"] >= 1.4:
+        if parts.get("semantic_positive", 0) >= 1.2:
+            reason = "Similar in meaning to videos you enjoyed"
+        elif parts["title"] >= 1.4:
             reason = "Similar to videos you enjoyed"
         elif parts["creator"] >= 1.1:
             reason = "From a creator you've watched"

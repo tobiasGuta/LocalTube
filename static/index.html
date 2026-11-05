@@ -76,7 +76,7 @@
     <div class="sidebar-footer">
       <span class="local-badge"><span class="local-dot"></span> Local-first</span>
       <p>No Google account required. Search and playback still contact YouTube.</p>
-      <span>LocalTube v0.8</span>
+      <span>LocalTube v0.9</span>
     </div>
   </aside>
   <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
@@ -89,6 +89,7 @@
         <select id="ranking-model" aria-label="Select ranking algorithm">
           <option value="content">v0.8 Content</option>
           <option value="baseline">v0.6 Baseline</option>
+          <option value="semantic" disabled>v0.9 Semantic (setup)</option>
         </select>
       </label>
       <div id="feed-balance-control" class="feed-balance-control" role="group" aria-labelledby="feed-balance-heading">
@@ -165,6 +166,14 @@
       <p class="dialog-description">Your strongest local interests based on chosen topics, likes and play clicks.</p>
       <div id="learned-interests" class="learned-interests"></div>
       <p class="dialog-description">Likes, actual playing time, completions, and repeated opens influence recommendations. Skipping ahead doesn't count as watched time.</p>
+      <section class="semantic-panel" aria-labelledby="semantic-title">
+        <h3 id="semantic-title">Semantic interests (optional)</h3>
+        <p id="semantic-status" role="status" aria-live="polite">Checking local model status…</p>
+        <p>To enable, install the optional FastEmbed dependency and explicitly download the open-source model:</p>
+        <code>python -m pip install -r requirements-semantic.txt</code>
+        <code>python -m semantic_engine download</code>
+        <p>Restart LocalTube. Model inference and interest vectors stay local. The initial model download contacts its hosting service; video discovery still contacts YouTube.</p>
+      </section>
       <h3 class="stats-title">Your local viewing stats</h3>
       <div id="watch-stats" class="watch-stats"></div>
     </section>

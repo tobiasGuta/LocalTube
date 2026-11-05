@@ -238,3 +238,11 @@ body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-divider,body.sideb
 .feed-balance-control input:focus-visible{outline:2px solid #a78bf5;outline-offset:3px}
 .feed-balance-ends{font-size:10px;color:#a7a0ad}
 @media(max-width:760px){.feed-balance-control{min-width:132px;max-width:155px;padding:5px 7px}.feed-balance-heading{font-size:10px;gap:6px}.feed-balance-ends{font-size:9px}}
+
+
+/* v0.9: optional local semantic model configuration and license notes. */
+.semantic-panel{border:1px solid #453c57;border-radius:10px;background:#292531;padding:14px;margin:18px 0 10px;color:#ccc}
+.semantic-panel h3{font-size:14px;margin:0 0 8px;color:#f0e9ff}
+.semantic-panel p{font-size:12px;line-height:1.5;margin:6px 0;color:#c1b9cc}
+.semantic-panel #semantic-status{color:#c6b3ff;font-weight:650}
+.semantic-panel code{display:block;overflow-wrap:anywhere;background:#151218;border:1px solid #38313d;padding:8px;margin:6px 0;border-radius:6px;color:#ddd;font-size:11px}

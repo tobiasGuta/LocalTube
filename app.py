@@ -20,6 +20,10 @@ from discovery import search_youtube
 from recommender import build_profile, topics_to_search, rank_feed
 from discovery_plan import build_queries
 from content_ranker import rank_content
+from semantic_engine import (
+    ModelUnavailable, examples_from, get_model,
+    semantic_features, status as semantic_status, suggest_expansion,
+)
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("LOCALTUBE_DB", str(ROOT / "data" / "localtube.db")))
@@ -69,6 +73,14 @@ def init_db():
             last_refresh_at INTEGER NOT NULL DEFAULT 0
         )""")
         db.execute("""INSERT OR IGNORE INTO feed_settings(id) VALUES(1)""")
+        # v0.9: vectors are generated locally on-demand, never during migration.
+        # Cache keys hash the text and include the model namespace.
+        db.execute("""CREATE TABLE IF NOT EXISTS semantic_vectors (
+            cache_key TEXT PRIMARY KEY,
+            model TEXT NOT NULL,
+            vector BLOB NOT NULL,
+            updated_at TEXT NOT NULL
+        )""")
 
 
 
@@ -147,7 +159,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="LocalTube", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="LocalTube", version="0.9.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -395,12 +407,27 @@ def profile():
     }
 
 
+@app.get("/api/semantic/status")
+def get_semantic_status():
+    """Cheap optional-model status check; never triggers a download."""
+    return semantic_status()
+
+
 @app.get("/api/feed")
 def feed(refresh: bool = False,
          refine: bool = True,
          balance: int = Query(default=65, ge=0, le=100),
-         ranker: str = Query(default="content", pattern="^(content|baseline)$")):
+         ranker: str = Query(default="content", pattern="^(content|baseline|semantic)$")):
     """Generate better candidates, keep baseline and new ranker comparable."""
+    # Explicit opt-in: the default content/baseline paths never load fastembed.
+    model = None
+    if ranker == "semantic":
+        try:
+            model = get_model()
+        except ModelUnavailable as exc:
+            raise HTTPException(
+                409, str(exc) + " Choose v0.8 Content until setup is complete."
+            ) from exc
     interests = _profile()
     library = videos()
     topics = topics_to_search(interests, limit=3)
@@ -431,17 +458,55 @@ def feed(refresh: bool = False,
         raise HTTPException(
             502, "YouTube discovery is unavailable right now. Your saved library still works."
         )
+
+    extra_query = None
+    learned_examples = 0
+    semantic_scores = None
+    if ranker == "semantic":
+        try:
+            learned_examples = len(examples_from(library))
+            # Optional expansion only when the user allows refined YouTube
+            # searches. A public result's concise title keywords seed one extra
+            # query, guided by semantic similarity to actual watched examples.
+            if refine and learned_examples:
+                suggestion = suggest_expansion(
+                    batches, library, {query.casefold() for _, query in plan},
+                    connect, model=model,
+                )
+                if suggestion is not None:
+                    topic, query = suggestion
+                    try:
+                        found = _search_cached(query)
+                        batches.append((topic, found))
+                        extra_query = query
+                    except HTTPException:
+                        pass
+            semantic_scores, learned_examples = semantic_features(
+                batches, library, connect, model=model,
+            )
+        except Exception as exc:
+            # Never silently switch rankers when the local model fails.
+            raise HTTPException(
+                503, "Local semantic ranking failed; try v0.8 Content. "
+                     "Check the FastEmbed installation and local model cache."
+            ) from exc
+
     seen = {video["id"] for video in library}
     if ranker == "baseline":
         ranked = rank_feed(batches, interests, seen, limit=24)
     else:
-        ranked = rank_content(batches, interests, library, seen, limit=24, balance=balance)
+        ranked = rank_content(
+            batches, interests, library, seen, limit=24, balance=balance,
+            semantic_scores=semantic_scores,
+        )
     return {
         "topics": topics,
         "videos": ranked,
         "cursor": cursor,
         "ranker": ranker,
-        "balance": balance if ranker == "content" else None,
+        "balance": balance if ranker != "baseline" else None,
+        "semantic_examples": learned_examples if ranker == "semantic" else None,
+        "semantic_expanded": extra_query is not None,
         "queries_used": len(batches),
         "candidates_considered": len({
             video["id"] for _, found in batches for video in found
