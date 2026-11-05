@@ -123,6 +123,50 @@ function updatePlayerLike() {
   $("player-like-label").textContent = liked ? "Liked" : "Like";
 }
 
+
+// A ranking explanation belongs next to the action that requested it, not in
+// the page-level status text (which can be off-screen when the user scrolls).
+// These are local, per-candidate heuristic contributions, NOT probabilities.
+const SCORE_EXPLANATIONS = [
+  ["semantic_positive", "Semantic similarity", "The video's meaning resembles titles you liked or meaningfully watched."],
+  ["semantic_negative", "Disliked semantic similarity", "The video's meaning resembles titles you marked Not interested."],
+  ["topic", "Topic relevance", "How strongly this video's search topic matches your current interests."],
+  ["title", "Title-word similarity", "Meaningful words shared with titles from your viewing history (TF-IDF)."],
+  ["creator", "Creator familiarity", "Your previous likes or viewing activity for this creator."],
+  ["discovery", "Search discovery", "A small contribution from its position in YouTube search results."],
+  ["agreement", "Multiple search matches", "This video was found by more than one discovery query."],
+  ["disliked_similarity", "Disliked title similarity", "Similar words to a title you previously dismissed."],
+  ["diversity_penalty", "Feed Balance adjustment", "Reduces repeated topics or creators based on previous feed cards."]
+];
+
+function showWhyVideo(video) {
+  if (!video || !video.score_breakdown) return;
+  $("why-video-title").textContent = video.title || "Untitled video";
+  $("why-summary").textContent = video.reason || "Suggested based on your local interests.";
+  const total = Number(video.score);
+  $("why-score").textContent = Number.isFinite(total) ? total.toFixed(2) : "Unavailable";
+
+  const root = $("why-factor-list");
+  root.replaceChildren();
+  for (const [key, label, description] of SCORE_EXPLANATIONS) {
+    if (!Object.prototype.hasOwnProperty.call(video.score_breakdown, key)) continue;
+    const number = Number(video.score_breakdown[key]);
+    if (!Number.isFinite(number)) continue;
+
+    const line = make("div", "why-factor");
+    const explanation = make("div", "why-factor-copy");
+    explanation.append(make("strong", "why-factor-name", label),
+                       make("span", "why-factor-help", description));
+    const prefix = number > 0 ? "+" : number < 0 ? "−" : "";
+    const amount = make("span",
+      "why-factor-number" + (number < 0 ? " is-negative" : ""),
+      prefix + Math.abs(number).toFixed(2));
+    line.append(explanation, amount);
+    root.append(line);
+  }
+  $("why-dialog").showModal();
+}
+
 function renderCard(video) {
   const saved = state.saved.find(item => item.id === video.id);
   const card = make("article", "video-card");
@@ -193,21 +237,7 @@ function renderCard(video) {
     menuAction(saved.rating === 1 ? "Remove like" : "Like video", () => rateVideo(video, saved.rating === 1 ? 0 : 1));
   }
   if (video.score_breakdown) {
-    menuAction("Why this video?", () => {
-      const detail = video.score_breakdown;
-      const show = (key) => Number(detail[key] || 0).toFixed(2);
-      notice("Score " + Number(video.score).toFixed(2) +
-        " · Topic +" + show("topic") + " · Title +" + show("title") +
-        " · Creator +" + show("creator") +
-        " · Discovery +" + show("discovery") +
-        (detail.semantic_positive !== undefined
-          ? " · Semantic +" + show("semantic_positive") +
-            " · Semantic dislike " + show("semantic_negative")
-          : "") +
-        " · Other " + (Number(detail.agreement || 0) +
-          Number(detail.disliked_similarity || 0) + Number(detail.diversity_penalty || 0)).toFixed(2) +
-        ". These are ranking scores, not probabilities.");
-    });
+    menuAction("Why this video?", () => showWhyVideo(video));
   }
   menuAction("Not interested", () => dismissVideo(video));
   if (saved) menuAction("Remove from library", () => removeVideo(video), true);
@@ -651,6 +681,7 @@ $("empty-action").addEventListener("click", () => {
 });
 $("open-add").addEventListener("click", () => $("add-dialog").showModal());
 $("close-add").addEventListener("click", () => $("add-dialog").close());
+$("close-why").addEventListener("click", () => $("why-dialog").close());
 $("add-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;

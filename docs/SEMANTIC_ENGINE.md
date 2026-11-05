@@ -150,8 +150,15 @@ The base v0.8 features include topic, TF-IDF title, creator, discovery
 position and multi-query agreement. Greedy reranking reduces repeated
 topics/creators with the same user-controlled Feed Balance setting.
 
-You can inspect these contributions with a candidate's **Why this video?**
-menu. The score is not a calibrated probability or a scientific measure of
+You can inspect these contributions using the **Why this video?** action in a
+recommended card's ⋮ menu. This opens an accessible dialog next to your
+current context—not a status message above the grid. The dialog shows the
+video's reason, total score and positive/negative contributions, including
+semantic similarities and the Feed Balance penalty. You can close it with the
+button or Escape. It uses only the data already returned by the local feed
+API; opening the explanation makes no new network request.
+
+The score is not a calibrated probability or a scientific measure of
 what you will enjoy.
 
 ## How it "learns" your preferences

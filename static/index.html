@@ -180,6 +180,24 @@
     <p id="interest-message" role="status" aria-live="polite"></p>
   </dialog>
 
+
+  <dialog id="why-dialog" class="modal why-modal" aria-labelledby="why-heading" aria-describedby="why-intro">
+    <div class="dialog-top">
+      <h2 id="why-heading">Why this video?</h2>
+      <button id="close-why" type="button" class="icon-button" aria-label="Close recommendation explanation" autofocus>✕</button>
+    </div>
+    <p id="why-intro" class="dialog-description">See how LocalTube ranked this video on your current feed.</p>
+    <h3 id="why-video-title" class="why-video-title"></h3>
+    <p id="why-summary" class="why-summary"></p>
+    <div class="why-score-line">
+      <span>Ranking score</span>
+      <strong id="why-score">—</strong>
+    </div>
+    <h3 class="why-section-title">What contributed to the score</h3>
+    <div id="why-factor-list" class="why-factor-list"></div>
+    <p class="why-note">Positive values raise the score; negative values lower it. These are explainable ranking signals, not probabilities or a measure of how much you'll enjoy a video. Feed Balance and which other videos are in the feed can change the score.</p>
+  </dialog>
+
   <dialog id="player-dialog" class="player-dialog" aria-labelledby="player-title">
     <div class="player-header">
       <h2 id="player-title">Video</h2>

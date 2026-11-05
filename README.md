@@ -20,6 +20,8 @@ Semantic mode can make **up to one additional, opt-in YouTube search** based on 
 
 **Learn how it works:** [docs/SEMANTIC_ENGINE.md](docs/SEMANTIC_ENGINE.md) explains the algorithm and equations, example weights, candidate discovery, API/SQLite schema, licensing, limitations, how to improve it, troubleshooting and private data management. It is written for developers and students reading the project.
 
+**Why this video?** From the ⋮ menu of any v0.8/v0.9 recommended video, choose **Why this video?** to open a readable explanation dialog with the ranking score and individual topic, title, creator, semantic, dislike and diversity contributions. It works when you're scrolled down the feed, and doesn't contact YouTube or modify your preferences. A positive contribution increases the score; a negative one reduces it. Scores are heuristic, not probabilities.
+
 **Developers:** Try `/api/feed?ranker=semantic&refine=false&balance=65`, compare `/api/feed?ranker=content` on the same candidates, and inspect per-video `score_breakdown`. Use `python -m semantic_engine clear-cache` to delete locally cached *vectors* without deleting your videos.
 
 ---

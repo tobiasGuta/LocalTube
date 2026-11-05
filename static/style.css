@@ -246,3 +246,23 @@ body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-divider,body.sideb
 .semantic-panel p{font-size:12px;line-height:1.5;margin:6px 0;color:#c1b9cc}
 .semantic-panel #semantic-status{color:#c6b3ff;font-weight:650}
 .semantic-panel code{display:block;overflow-wrap:anywhere;background:#151218;border:1px solid #38313d;padding:8px;margin:6px 0;border-radius:6px;color:#ddd;font-size:11px}
+
+
+/* v0.9 patch: visible, accessible ranking explanations. */
+.why-modal{width:min(580px,94vw);max-height:min(84vh,850px);overflow-y:auto}
+.why-modal .dialog-top{margin-bottom:8px}
+.why-modal .dialog-description{margin:5px 0 14px}
+.why-video-title{font-size:16px;line-height:1.45;font-weight:700;margin:0 0 7px;overflow-wrap:anywhere}
+.why-summary{color:#c9b4ff;font-size:13px;line-height:1.55;margin:0 0 16px}
+.why-score-line{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:13px 15px;background:#302840;border:1px solid #554474;border-radius:10px;font-size:13px}
+.why-score-line strong{font-size:23px;font-variant-numeric:tabular-nums;color:#e1d1ff}
+.why-section-title{font-size:14px;margin:22px 0 11px}
+.why-factor-list{display:flex;flex-direction:column;gap:8px}
+.why-factor{display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid #38333e;border-radius:9px;background:#252229;padding:12px}
+.why-factor-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.why-factor-name{font-size:13px;color:#e7e2ec}
+.why-factor-help{color:#aeadb5;font-size:12px;line-height:1.4}
+.why-factor-number{flex-shrink:0;min-width:58px;text-align:right;font-size:15px;font-weight:750;color:#c3e7cb;font-variant-numeric:tabular-nums}
+.why-factor-number.is-negative{color:#f4b5b5}
+.why-note{font-size:12px;line-height:1.6;color:#b4b1bb;margin:16px 0 0}
+@media(max-width:540px){.why-modal{padding:16px}.why-factor{padding:10px}.why-factor-number{font-size:14px}}

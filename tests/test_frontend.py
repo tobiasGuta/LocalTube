@@ -172,3 +172,35 @@ def test_v09_optional_semantic_mode_ui_and_documentation():
     parser = PageParser()
     parser.feed(html)
     assert parser.scripts == ["/static/player.js", "/static/app.js"]
+
+
+
+def test_why_this_video_opens_visible_local_explanation_dialog():
+    """The original click updated an off-screen status line; keep this a dialog."""
+    html = HTML.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    parser = PageParser()
+    parser.feed(html)
+    assert len(parser.ids) == len(set(parser.ids))
+    assert {"why-dialog", "why-heading", "why-video-title", "why-summary",
+            "why-score", "why-factor-list", "close-why"}.issubset(parser.ids)
+    assert 'aria-labelledby="why-heading"' in html
+    assert 'aria-label="Close recommendation explanation"' in html
+    assert 'menuAction("Why this video?", () => showWhyVideo(video))' in script
+    method = script.split("function showWhyVideo(video) {", 1)[1].split(
+        "function renderCard(video) {", 1
+    )[0]
+    assert 'why-dialog").showModal()' in method
+    assert 'why-factor-list").replaceChildren()' not in method
+    assert "root.replaceChildren();" in method
+    assert 'video.score_breakdown' in method
+    assert 'video.reason' in method
+    assert 'notice(' not in method
+    assert 'textContent = video.title' in method
+    assert 'textContent = video.reason' in method
+    assert 'function showWhyVideo(video) {' in script
+    assert '"close-why").addEventListener("click"' in script
+    assert ".why-modal" in css
+    assert ".why-factor-number.is-negative" in css
+    assert "These are explainable ranking signals, not probabilities" in html
