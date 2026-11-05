@@ -2,6 +2,21 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+> **Research branch notice:** The optional v0.10 experiments live on
+> research/v0.10-evaluation. The existing v0.9 application is untouched.
+> Read [the v0.10 research guide](docs/V010_RESEARCH.md) for the experiment,
+> why the comparison is fair, offline tests and how to capture private
+> candidate snapshots without extra YouTube searches.
+>
+> Quick smoke test: python -m experiments.evaluate
+> experiments/fixtures/mixed_interests.json (enter as one command).
+> Use python -m experiments.capture to explicitly freeze your *local* cache,
+> then manually label and evaluate using --local-model. Private snapshots
+> remain under the Git-ignored data/research/ directory.
+>
+> **No algorithm changes will be merged to main until real evidence shows
+> an improvement.**
+
 ## New in v0.9 — optional local Semantic Interest Engine
 
 LocalTube now offers a **v0.9 Semantic (local)** ranking mode, alongside the unchanged **v0.8 Content** (default) and **v0.6 Baseline** algorithms. Semantic mode understands meaning beyond title keyword overlap. It uses a small open-source pretrained English embedding model through FastEmbed/ONNX **on your own computer** and builds an adaptive preference profile from videos you've actually liked, watched or disliked. It does **not** fine-tune the neural network or train ranking weights, and it won't infer interests accurately before meaningful examples exist.

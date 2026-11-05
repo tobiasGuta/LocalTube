@@ -1,0 +1,217 @@
+{
+  "name": "Synthetic mixed interests: TED-style learning plus horror gaming",
+  "description": "Hand-authored vectors/labels for deterministic algorithm contracts; NOT measured recommendation quality.",
+  "evaluation_time": "2026-11-01T12:00:00+00:00",
+  "balance": 75,
+  "topics": [
+    "knowledge",
+    "gaming"
+  ],
+  "library": [
+    {
+      "id": "s0000000001",
+      "title": "How to think clearly under pressure",
+      "tags": [
+        "knowledge"
+      ],
+      "channel": "Science Talks",
+      "rating": 1,
+      "watched_seconds": 500,
+      "duration_seconds": 700,
+      "completions": 1,
+      "last_activity_at": "2026-10-30T00:00:00+00:00",
+      "embedding": [
+        1,
+        0.08,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "s0000000002",
+      "title": "How to improve your communication skills",
+      "tags": [
+        "knowledge"
+      ],
+      "channel": "Talks",
+      "rating": 1,
+      "watched_seconds": 390,
+      "duration_seconds": 650,
+      "completions": 1,
+      "last_activity_at": "2026-10-28T00:00:00+00:00",
+      "embedding": [
+        0.97,
+        0.05,
+        0,
+        0.07
+      ]
+    },
+    {
+      "id": "s0000000003",
+      "title": "Survival horror gameplay walkthrough",
+      "tags": [
+        "gaming"
+      ],
+      "channel": "Horror Plays",
+      "rating": 1,
+      "watched_seconds": 900,
+      "duration_seconds": 1200,
+      "completions": 0,
+      "last_activity_at": "2026-10-31T00:00:00+00:00",
+      "embedding": [
+        0.02,
+        1,
+        0.01,
+        0.01
+      ]
+    },
+    {
+      "id": "s0000000004",
+      "title": "Knowledge Musona soccer goal highlights",
+      "tags": [
+        "knowledge"
+      ],
+      "channel": "Sports Clips",
+      "rating": -1,
+      "watched_seconds": 0,
+      "duration_seconds": 400,
+      "completions": 0,
+      "last_activity_at": "2026-10-20T00:00:00+00:00",
+      "embedding": [
+        0.02,
+        0,
+        1,
+        0
+      ]
+    }
+  ],
+  "batches": [
+    {
+      "topic": "knowledge",
+      "videos": [
+        {
+          "id": "aaaaaaaaaaa",
+          "title": "Better reasoning and clearer decisions",
+          "channel": "Thinking Lab",
+          "duration": 710,
+          "label": 3,
+          "embedding": [
+            0.94,
+            0.09,
+            0.01,
+            0.06
+          ]
+        },
+        {
+          "id": "bbbbbbbbbbb",
+          "title": "Knowledge Musona goals and assists",
+          "channel": "Sports News",
+          "duration": 400,
+          "label": 0,
+          "embedding": [
+            0.01,
+            0.01,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "ccccccccccc",
+          "title": "Learn confident public speaking",
+          "channel": "Presentation Club",
+          "duration": 560,
+          "label": 3,
+          "embedding": [
+            0.95,
+            0.02,
+            0,
+            0.08
+          ]
+        },
+        {
+          "id": "ddddddddddd",
+          "title": "General knowledge driving exam questions",
+          "channel": "Quiz Prep",
+          "duration": 620,
+          "label": 0,
+          "embedding": [
+            0.09,
+            0,
+            0.1,
+            0.98
+          ]
+        },
+        {
+          "id": "eeeeeeeeeee",
+          "title": "How stress affects your thinking",
+          "channel": "Science School",
+          "duration": 580,
+          "label": 2,
+          "embedding": [
+            0.97,
+            0.02,
+            0.03,
+            0.05
+          ]
+        }
+      ]
+    },
+    {
+      "topic": "gaming",
+      "videos": [
+        {
+          "id": "ffffffffff0",
+          "title": "New survival horror gaming walkthrough",
+          "channel": "Horror Plays",
+          "duration": 1260,
+          "label": 3,
+          "embedding": [
+            0,
+            0.99,
+            0.01,
+            0
+          ]
+        },
+        {
+          "id": "gggggggggg0",
+          "title": "Cozy puzzle adventure gameplay",
+          "channel": "Puzzle Gamer",
+          "duration": 1000,
+          "label": 2,
+          "embedding": [
+            0.04,
+            0.88,
+            0,
+            0.25
+          ]
+        },
+        {
+          "id": "hhhhhhhhhh0",
+          "title": "Football match highlights and goals",
+          "channel": "Sports Now",
+          "duration": 680,
+          "label": 0,
+          "embedding": [
+            0,
+            0.03,
+            0.98,
+            0
+          ]
+        },
+        {
+          "id": "iiiiiiiiii0",
+          "title": "New tips for digital note taking",
+          "channel": "Productivity Basics",
+          "duration": 500,
+          "label": 1,
+          "embedding": [
+            0.21,
+            0,
+            0,
+            0.94
+          ]
+        }
+      ]
+    }
+  ]
+}
