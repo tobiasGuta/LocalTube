@@ -5,10 +5,16 @@ const $ = (id) => document.getElementById(id);
 const state = {
   view: "home", results: [], saved: [], topics: [], filter: "All",
   thumbnails: false, query: "", requestToken: 0,
-  currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true
+  currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true, balance: 65
 };
 try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; } catch (_) {}
 try { state.refine = localStorage.getItem("localtube-refined-search") !== "off"; } catch (_) {}
+try {
+  const savedBalance = localStorage.getItem("localtube-feed-balance");
+  if (savedBalance !== null && /^\d{1,3}$/.test(savedBalance)) {
+    state.balance = Math.min(100, Math.max(0, Math.round(Number(savedBalance) / 5) * 5));
+  }
+} catch (_) {}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -276,6 +282,20 @@ function renderGrid() {
   $("empty-action").textContent = state.filter !== "All" ? "Show all" : empty[2];
 }
 
+function feedBalanceLabel(value) {
+  if (value <= 30) return "Focused";
+  if (value >= 75) return "Explore";
+  return "Balanced";
+}
+
+function updateFeedBalanceControl() {
+  $("feed-balance").value = String(state.balance);
+  $("feed-balance-value").textContent =
+    feedBalanceLabel(state.balance) + " · " + state.balance;
+  $("feed-balance-control").hidden =
+    !["home", "explore"].includes(state.view) || state.ranker === "baseline";
+}
+
 function renderShell() {
   for (const nav of document.querySelectorAll(".nav-item[data-view]")) {
     const isSelected = nav.dataset.view === state.view;
@@ -296,6 +316,8 @@ function renderShell() {
   $("library-search-wrap").hidden = !["library", "liked", "history"].includes(state.view);
   $("back-to-feed").hidden = state.view !== "search";
   $("reload-feed").hidden = ["search", "library", "liked", "history"].includes(state.view);
+  $("feed-balance-control").hidden =
+    !["home", "explore"].includes(state.view) || state.ranker === "baseline";
   renderFilters();
   renderGrid();
 }
@@ -398,13 +420,14 @@ async function loadView(view, {refresh = false} = {}) {
   renderShell();
   try {
     const feed = await api("/api/feed?ranker=" + encodeURIComponent(state.ranker) +
-      "&refine=" + String(state.refine) + (refresh ? "&refresh=true" : ""));
+      "&refine=" + String(state.refine) + "&balance=" + String(state.balance) +
+      (refresh ? "&refresh=true" : ""));
     if (token !== state.requestToken) return;
     state.results = feed.videos;
     notice(feed.topics.length
       ? (feed.candidates_considered || 0) + " videos evaluated across " +
         (feed.queries_used || 0) + " searches · " +
-        (state.ranker === "baseline" ? "v0.6 baseline" : "v0.7 content-based") +
+        (state.ranker === "baseline" ? "v0.6 baseline" : "v0.8 content-based, balance " + state.balance) +
         " ranking"
       : "Add an interest or play a saved video to start discovering.");
     renderShell();
@@ -549,7 +572,22 @@ document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventLis
 $("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("ranking-model").addEventListener("change", (event) => {
   state.ranker = event.currentTarget.value === "baseline" ? "baseline" : "content";
+  updateFeedBalanceControl();
   if (state.view === "home" || state.view === "explore") loadView(state.view);
+});
+updateFeedBalanceControl();
+$("feed-balance").addEventListener("input", (event) => {
+  // Preview the label without starting network work during dragging.
+  state.balance = Number(event.currentTarget.value);
+  updateFeedBalanceControl();
+});
+$("feed-balance").addEventListener("change", (event) => {
+  state.balance = Number(event.currentTarget.value);
+  updateFeedBalanceControl();
+  try { localStorage.setItem("localtube-feed-balance", String(state.balance)); } catch (_) {}
+  if ((state.view === "home" || state.view === "explore") && state.ranker === "content") {
+    loadView(state.view); // Uses existing cached candidates; no refresh cursor change.
+  }
 });
 $("refined-search").checked = state.refine;
 $("refined-search").addEventListener("change", (event) => {

@@ -147,7 +147,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="LocalTube", version="0.7.0", lifespan=lifespan)
+app = FastAPI(title="LocalTube", version="0.8.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -398,6 +398,7 @@ def profile():
 @app.get("/api/feed")
 def feed(refresh: bool = False,
          refine: bool = True,
+         balance: int = Query(default=65, ge=0, le=100),
          ranker: str = Query(default="content", pattern="^(content|baseline)$")):
     """Generate better candidates, keep baseline and new ranker comparable."""
     interests = _profile()
@@ -434,12 +435,13 @@ def feed(refresh: bool = False,
     if ranker == "baseline":
         ranked = rank_feed(batches, interests, seen, limit=24)
     else:
-        ranked = rank_content(batches, interests, library, seen, limit=24)
+        ranked = rank_content(batches, interests, library, seen, limit=24, balance=balance)
     return {
         "topics": topics,
         "videos": ranked,
         "cursor": cursor,
         "ranker": ranker,
+        "balance": balance if ranker == "content" else None,
         "queries_used": len(batches),
         "candidates_considered": len({
             video["id"] for _, found in batches for video in found

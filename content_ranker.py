@@ -55,13 +55,25 @@ def rank_content(
     seen_ids: set[str],
     *,
     limit: int = 24,
+    balance: int = 65,
 ) -> list[dict]:
     """Rank candidate videos using explainable bounded features and greedy variety.
 
     Features (not trained parameters): topic affinity, positive/negative title
     similarity, creator affinity, search position, corroborating queries, and
-    diminishing topic/creator exposure. Scores are not probabilities.
+    diminishing topic/creator exposure. The balance parameter only scales
+    reranking penalties; base relevance features and discovery remain unchanged.
+    Scores are not probabilities.
     """
+    if not isinstance(balance, int) or not 0 <= balance <= 100:
+        raise ValueError("Feed balance must be an integer from 0 to 100")
+    # At 65, preserve the original v0.7 penalties exactly.
+    # Focus (0) strongly prefers relevance; Explore (100) increases variety.
+    diversity_multiplier = (
+        0.2 + 0.8 * balance / 65
+        if balance <= 65 else
+        1.0 + 0.8 * (balance - 65) / 35
+    )
     pool: dict[str, dict] = {}
     for topic, results in batches:
         for position, video in enumerate(results):
@@ -138,10 +150,10 @@ def rank_content(
         for vid, video in pool.items():
             parts = features[vid]
             # The same topic and creator become less attractive as slots fill.
-            diversity = 1.6 * topic_count[video["_main_topic"]]
+            diversity = 1.6 * diversity_multiplier * topic_count[video["_main_topic"]]
             creator_key = str(video.get("channel") or "").strip().casefold()
             if creator_key:
-                diversity += 4.0 * channel_count[creator_key]
+                diversity += 4.0 * diversity_multiplier * channel_count[creator_key]
             score = sum(parts.values()) - diversity
             if score > best_score:
                 best_id, best_score = vid, score

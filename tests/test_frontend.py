@@ -130,3 +130,20 @@ def test_v07_model_selector_and_explanation_menu():
     parser = PageParser()
     parser.feed(html)
     assert parser.scripts == ["/static/player.js", "/static/app.js"]
+
+
+def test_feed_balance_slider_persists_and_preserves_baseline():
+    html = HTML.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    assert 'id="feed-balance-control"' in html
+    assert 'id="feed-balance"' in html
+    assert 'id="feed-balance-value"' in html
+    assert 'min="0" max="100" step="5" value="65"' in html
+    assert 'aria-describedby="feed-balance-description"' in html
+    assert 'localtube-feed-balance' in script
+    assert '"&balance=" + String(state.balance)' in script
+    assert 'state.ranker === "baseline"' in script
+    assert '"feed-balance").addEventListener("change"' in script
+    assert '.feed-balance-control[hidden]{display:none}' in css
+    assert 'v0.8 Content' in html

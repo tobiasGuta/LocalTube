@@ -76,7 +76,7 @@
     <div class="sidebar-footer">
       <span class="local-badge"><span class="local-dot"></span> Local-first</span>
       <p>No Google account required. Search and playback still contact YouTube.</p>
-      <span>LocalTube v0.7</span>
+      <span>LocalTube v0.8</span>
     </div>
   </aside>
   <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
@@ -87,10 +87,19 @@
       <label class="ranking-choice" for="ranking-model">
         <span>Ranking</span>
         <select id="ranking-model" aria-label="Select ranking algorithm">
-          <option value="content">v0.7 Content</option>
+          <option value="content">v0.8 Content</option>
           <option value="baseline">v0.6 Baseline</option>
         </select>
       </label>
+      <div id="feed-balance-control" class="feed-balance-control" role="group" aria-labelledby="feed-balance-heading">
+        <div class="feed-balance-heading">
+          <label id="feed-balance-heading" for="feed-balance">Feed balance</label>
+          <output id="feed-balance-value" for="feed-balance">Balanced · 65</output>
+        </div>
+        <input type="range" id="feed-balance" min="0" max="100" step="5" value="65"
+          aria-describedby="feed-balance-description">
+        <div class="feed-balance-ends" id="feed-balance-description"><span>Focused</span><span>Explore</span></div>
+      </div>
       <button id="reload-feed" class="icon-button reload" type="button" aria-label="Reload videos" title="Reload videos">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5.6"/></svg>
       </button>

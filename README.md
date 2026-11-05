@@ -2,6 +2,17 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
+## New in v0.8 — Feed Balance
+
+- **Focused ↔ Explore** slider beside the ranking selector, with a 0–100 range and 5-point increments. Default **Balanced · 65** preserves the v0.7 content ranker's existing behavior.
+- Focused reduces topic/creator repeat penalties to favor videos most relevant to your strongest interests; Explore increases those penalties to include more distinct interests and creators among the top picks.
+- The slider changes **only reranking** of the existing candidate pool. Adjusting it does not change the number or content of YouTube searches, does not cycle discovery searches, and does not require any ML training.
+- Stored as browser-local preference `localtube-feed-balance`, with no database migration or third-party analytics.
+- **v0.6 Baseline** remains selectable and ignores Feed Balance; the slider is hidden while using that ranker.
+- The API accepts `/api/feed?ranker=content&balance=0` through `balance=100` (default 65). Invalid values are rejected. The feed response returns the effective balance setting; baseline returns `null`.
+- The v0.7 content scoring breakdown remains available under **Why this video?**. The score's diversity-penalty component changes with the slider.
+
+**Design note:** This is a reranker with adjustable diversity penalties, *not* a mathematically calibrated slider that guarantees a fixed percentage of gaming or knowledge videos. It cannot invent videos absent from the discovery pool.
 ## New in v0.7 — better candidates and transparent content ranking
 
 - **More focused candidate discovery.** LocalTube searches up to three preferred topics, plus at most one short keyword query from a liked or meaningfully watched video's title, and at most one query using its creator name. **Maximum five queries per feed**; results are locally cached for an hour per query.
@@ -122,9 +133,10 @@ Tests use mocked YouTube results and need no Google account or live YouTube acce
 2. Account-free discovery — v0.2.
 3. Responsive video-first UI — v0.3.
 4. Explainable heuristics and watch signals — v0.4–v0.6.
-5. TF-IDF candidate expansion and comparable rankers — **v0.7**.
-6. Evaluate ranking with impression/feedback data, then consider learned weights.
-7. Channel subscriptions and more diverse discovery.
-8. Authentication and secure LAN/Tailscale access, then home server migration.
+5. TF-IDF candidate expansion and comparable rankers — v0.7.
+6. Adjustable feed relevance/diversity balance — **v0.8**.
+7. Evaluate ranking with impression/feedback data, then consider learned weights.
+8. Channel subscriptions and more diverse discovery.
+9. Authentication and secure LAN/Tailscale access, then home server migration.
 
 MIT licensed.

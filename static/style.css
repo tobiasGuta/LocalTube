@@ -225,3 +225,16 @@ body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-divider,body.sideb
 /* v0.7: user control over sending refined search keywords to YouTube. */
 .refined-search-option{display:flex;align-items:start;gap:10px;font-size:12px;line-height:1.55;color:#d0c7de;border:1px solid #514462;border-radius:10px;background:#302838;padding:12px;margin:14px 0 18px;cursor:pointer}
 .refined-search-option input{width:17px;height:17px;flex-shrink:0;accent-color:#a78bf5;margin:1px 0 0}
+
+
+/* v0.8: focused-to-exploratory feed balance. */
+.feed-balance-control{display:flex;flex-direction:column;gap:3px;min-width:178px;max-width:220px;padding:5px 9px 3px;border:1px solid #45414d;border-radius:10px;background:#242128}
+.feed-balance-control[hidden]{display:none}
+.feed-balance-heading,.feed-balance-ends{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.feed-balance-heading{font-size:11px;color:#e8e4ec;white-space:nowrap}
+.feed-balance-heading label{font-weight:650}
+.feed-balance-heading output{color:#c9b4fc}
+.feed-balance-control input{width:100%;margin:1px 0;accent-color:#a78bf5;cursor:pointer}
+.feed-balance-control input:focus-visible{outline:2px solid #a78bf5;outline-offset:3px}
+.feed-balance-ends{font-size:10px;color:#a7a0ad}
+@media(max-width:760px){.feed-balance-control{min-width:132px;max-width:155px;padding:5px 7px}.feed-balance-heading{font-size:10px;gap:6px}.feed-balance-ends{font-size:9px}}
