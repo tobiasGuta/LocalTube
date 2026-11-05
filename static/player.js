@@ -89,7 +89,9 @@
       position_seconds: ended ? duration : position,
       duration_seconds: duration,
       watched_delta: delta,
-      ended: Boolean(ended && duration > 0)
+      ended: Boolean(ended && duration > 0),
+      ...(session.sessionId ? {session_id: session.sessionId,
+        sequence: ++session.sequence} : {})
     };
     if (ended && duration <= 0) return;
     session.pending = session.pending
@@ -140,7 +142,7 @@
     status("Video playback is available, but progress tracking is unavailable (player API blocked).");
   }
 
-  async function open(video, saved) {
+  async function open(video, saved, sessionId = null) {
     close();
     const position = Number(saved?.resume_position) || 0;
     const duration = Number(saved?.duration_seconds) || 0;
@@ -149,7 +151,7 @@
       id: ++nextSessionId, video, active: true, player: null, timer: null,
       playing: false, lastWall: null, lastPosition: null,
       pending: Promise.resolve(), progress: saved,
-      duration, completed: false
+      duration, completed: false, sessionId, sequence: 0
     };
     current = session;
     $("player-dialog").showModal();

@@ -20,6 +20,10 @@ from discovery import search_youtube
 from recommender import build_profile, topics_to_search, rank_feed
 from discovery_plan import build_queries
 from content_ranker import rank_content
+from watch_learning import (
+    meaningful_threshold, meaningful_sessions, watch_features,
+    watch_profile_library, session_examples,
+)
 from semantic_engine import (
     ModelUnavailable, examples_from, get_model,
     semantic_features, status as semantic_status, suggest_expansion,
@@ -81,6 +85,17 @@ def init_db():
             vector BLOB NOT NULL,
             updated_at TEXT NOT NULL
         )""")
+        # v0.10 research only: local playback sessions; historical totals untouched.
+        db.execute("""CREATE TABLE IF NOT EXISTS watch_sessions (
+            session_id TEXT PRIMARY KEY, video_id TEXT NOT NULL,
+            started_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            watched_seconds REAL NOT NULL DEFAULT 0,
+            duration_seconds REAL NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            last_sequence INTEGER NOT NULL DEFAULT 0
+        )""")
+        db.execute("""CREATE INDEX IF NOT EXISTS watch_sessions_by_video
+            ON watch_sessions(video_id, updated_at)""")
 
 
 
@@ -129,7 +144,17 @@ class NewVideo(BaseModel):
     duration_seconds: float = Field(default=0.0, ge=0, le=86400)
 
 
+class PlayStart(BaseModel):
+    session_id: str = Field(
+        min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]{16,64}$")
+
+
 class WatchProgress(BaseModel):
+    session_id: str | None = Field(
+        default=None, min_length=16, max_length=64,
+        pattern=r"^[A-Za-z0-9_-]{16,64}$")
+    sequence: int | None = Field(default=None, ge=1, le=10000000)
+
     position_seconds: float = Field(ge=0, le=86400)
     duration_seconds: float = Field(ge=0, le=86400)
     watched_delta: float = Field(ge=0, le=15)
@@ -140,6 +165,8 @@ class WatchProgress(BaseModel):
         if not all(math.isfinite(v) for v in
                    (self.position_seconds, self.duration_seconds, self.watched_delta)):
             raise ValueError("Progress values must be finite")
+        if (self.session_id is None) != (self.sequence is None):
+            raise ValueError("Session ID and sequence must be supplied together")
         if self.duration_seconds > 0 and self.position_seconds > self.duration_seconds + 3:
             raise ValueError("Position exceeds duration")
         return self
@@ -200,14 +227,39 @@ def add_video(video: NewVideo):
 
 
 @app.post("/api/videos/{video_id}/play")
-def play(video_id: str):
+def play(video_id: str, start: PlayStart | None = None):
+    """Legacy play counter plus an optional idempotent playback-session start."""
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with connect() as db:
-        changed = db.execute(
-            "UPDATE videos SET plays=plays+1, last_activity_at=? WHERE id=?",
-            (datetime.now(timezone.utc).isoformat(timespec="seconds"), video_id),
-        )
-        if not changed.rowcount:
+        if not db.execute("SELECT 1 FROM videos WHERE id=?", (video_id,)).fetchone():
             raise HTTPException(404, "Video not found")
+        first_open = True
+        if start is not None:
+            old = db.execute(
+                "SELECT video_id FROM watch_sessions WHERE session_id=?",
+                (start.session_id,),
+            ).fetchone()
+            if old and old["video_id"] != video_id:
+                raise HTTPException(409, "Playback session belongs to another video")
+            if old:
+                first_open = False
+            else:
+                db.execute(
+                    """INSERT INTO watch_sessions(
+                        session_id,video_id,started_at,updated_at)
+                        VALUES(?,?,?,?)""",
+                    (start.session_id, video_id, stamp, stamp),
+                )
+                # Bound retained session data without deleting v0.9 watch history.
+                db.execute("""DELETE FROM watch_sessions WHERE session_id NOT IN (
+                    SELECT session_id FROM watch_sessions
+                    ORDER BY updated_at DESC, session_id DESC LIMIT 3000
+                )""")
+        if first_open:
+            db.execute(
+                "UPDATE videos SET plays=plays+1, last_activity_at=? WHERE id=?",
+                (stamp, video_id),
+            )
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
 
 
@@ -239,15 +291,39 @@ def update_progress(video_id: str, progress: WatchProgress):
         duration = progress.duration_seconds or old["duration_seconds"]
         if progress.ended and duration <= 0:
             raise HTTPException(422, "Cannot complete video without known duration")
-        position = 0.0 if progress.ended else progress.position_seconds
-        # An explicit end signal marks completion; simply seeking to the end does not.
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        completed = bool(progress.ended)
+        if progress.session_id is not None:
+            session = db.execute(
+                "SELECT * FROM watch_sessions WHERE session_id=?",
+                (progress.session_id,),
+            ).fetchone()
+            if session is None:
+                raise HTTPException(404, "Unknown playback session")
+            if session["video_id"] != video_id:
+                raise HTTPException(409, "Playback session belongs to another video")
+            if progress.sequence <= session["last_sequence"]:
+                # Retried/out-of-order heartbeat must never double count seconds.
+                return as_video(old)
+            total = session["watched_seconds"] + progress.watched_delta
+            completed = bool(progress.ended and
+                             total >= meaningful_threshold(duration) and
+                             not session["completed"])
+            db.execute(
+                """UPDATE watch_sessions SET
+                    watched_seconds=watched_seconds+?,
+                    duration_seconds=?, completed=MAX(completed, ?),
+                    updated_at=?, last_sequence=? WHERE session_id=?""",
+                (progress.watched_delta, duration, int(completed), stamp,
+                 progress.sequence, progress.session_id),
+            )
+        position = 0.0 if completed else progress.position_seconds
         db.execute(
             """UPDATE videos
                SET duration_seconds=?, resume_position=?, watched_seconds=watched_seconds+?,
                    completions=completions+?, last_watched_at=?, last_activity_at=?
                WHERE id=?""",
-            (duration, position, progress.watched_delta, int(progress.ended),
+            (duration, position, progress.watched_delta, int(completed),
              stamp, stamp, video_id),
         )
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
@@ -292,6 +368,35 @@ def delete(video_id: str):
     with connect() as db:
         if not db.execute("DELETE FROM videos WHERE id=?", (video_id,)).rowcount:
             raise HTTPException(404, "Video not found")
+        db.execute("DELETE FROM watch_sessions WHERE video_id=?", (video_id,))
+
+
+def _watch_sessions() -> list[dict]:
+    with connect() as db:
+        return [dict(row) for row in db.execute(
+            "SELECT * FROM watch_sessions ORDER BY updated_at DESC LIMIT 3000"
+        )]
+
+
+@app.get("/api/watch-learning/stats")
+def watch_learning_stats():
+    """Aggregate local-only progress; does not load an ML model or contact YouTube."""
+    sessions = _watch_sessions()
+    samples = session_examples(videos(), sessions)
+    return {
+        "sessions": len(sessions),
+        "meaningful_sessions": len(meaningful_sessions(sessions)),
+        "positive_examples": sum(weight > 0 for _, weight in samples),
+        "negative_examples": sum(weight < 0 for _, weight in samples),
+        "note": "Short exits are neutral. Existing v0.9 watch totals are retained.",
+    }
+
+
+@app.delete("/api/watch-learning/sessions", status_code=204)
+def clear_watch_learning_sessions():
+    """Explicitly clear session learning, never the pre-existing watch library."""
+    with connect() as db:
+        db.execute("DELETE FROM watch_sessions")
 
 
 @app.get("/api/recommendations")
@@ -417,19 +522,27 @@ def get_semantic_status():
 def feed(refresh: bool = False,
          refine: bool = True,
          balance: int = Query(default=65, ge=0, le=100),
-         ranker: str = Query(default="content", pattern="^(content|baseline|semantic)$")):
+         ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch)$")):
     """Generate better candidates, keep baseline and new ranker comparable."""
     # Explicit opt-in: the default content/baseline paths never load fastembed.
     model = None
-    if ranker == "semantic":
+    if ranker in ("semantic", "watch"):
         try:
             model = get_model()
         except ModelUnavailable as exc:
             raise HTTPException(
                 409, str(exc) + " Choose v0.8 Content until setup is complete."
             ) from exc
-    interests = _profile()
     library = videos()
+    sessions = _watch_sessions() if ranker == "watch" else []
+    ranking_library = (watch_profile_library(library, sessions)
+                       if ranker == "watch" else library)
+    if ranker == "watch":
+        with connect() as db:
+            chosen_topics = [row["topic"] for row in db.execute("SELECT topic FROM topics")]
+        interests = build_profile(chosen_topics, ranking_library)
+    else:
+        interests = _profile()
     topics = topics_to_search(interests, limit=3)
     if not topics:
         return {"topics": [], "videos": []}
@@ -462,7 +575,8 @@ def feed(refresh: bool = False,
     extra_query = None
     learned_examples = 0
     semantic_scores = None
-    if ranker == "semantic":
+    watch_summary = None
+    if ranker in ("semantic", "watch"):
         try:
             learned_examples = len(examples_from(library))
             # Optional expansion only when the user allows refined YouTube
@@ -481,9 +595,14 @@ def feed(refresh: bool = False,
                         extra_query = query
                     except HTTPException:
                         pass
-            semantic_scores, learned_examples = semantic_features(
-                batches, library, connect, model=model,
-            )
+            if ranker == "watch":
+                semantic_scores, watch_summary = watch_features(
+                    batches, library, sessions, connect, model=model)
+                learned_examples = watch_summary["examples"]
+            else:
+                semantic_scores, learned_examples = semantic_features(
+                    batches, library, connect, model=model,
+                )
         except Exception as exc:
             # Never silently switch rankers when the local model fails.
             raise HTTPException(
@@ -496,7 +615,7 @@ def feed(refresh: bool = False,
         ranked = rank_feed(batches, interests, seen, limit=24)
     else:
         ranked = rank_content(
-            batches, interests, library, seen, limit=24, balance=balance,
+            batches, interests, ranking_library, seen, limit=24, balance=balance,
             semantic_scores=semantic_scores,
         )
     return {
@@ -505,7 +624,8 @@ def feed(refresh: bool = False,
         "cursor": cursor,
         "ranker": ranker,
         "balance": balance if ranker != "baseline" else None,
-        "semantic_examples": learned_examples if ranker == "semantic" else None,
+        "semantic_examples": learned_examples if ranker in ("semantic", "watch") else None,
+        "watch_learning": watch_summary,
         "semantic_expanded": extra_query is not None,
         "queries_used": len(batches),
         "candidates_considered": len({

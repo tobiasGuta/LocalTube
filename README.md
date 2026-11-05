@@ -2,20 +2,25 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
-> **Research branch notice:** The optional v0.10 experiments live on
-> research/v0.10-evaluation. The existing v0.9 application is untouched.
+> **Research branch notice:** v0.10 experiments live on
+> research/v0.10-evaluation, not main. The production v0.9 branch stays
+> unchanged. This branch adds a separate, optional **v0.10 Watch Learning**
+> ranking mode that automatically adapts to meaningful watching sessions,
+> without manually rating candidate JSON snapshots. The original v0.9
+> Semantic ranking remains selectable and unchanged.
+> Read [the Watch Learning guide](docs/WATCH_LEARNING.md) for setup, equations,
+> privacy, reset controls, limitations, and tests.
 > Read [the v0.10 research guide](docs/V010_RESEARCH.md) for the experiment,
 > why the comparison is fair, offline tests and how to capture private
 > candidate snapshots without extra YouTube searches.
 >
-> Quick smoke test: python -m experiments.evaluate
-> experiments/fixtures/mixed_interests.json (enter as one command).
-> Use python -m experiments.capture to explicitly freeze your *local* cache,
-> then manually label and evaluate using --local-model. Private snapshots
-> remain under the Git-ignored data/research/ directory.
+> To try the new mode, start the research branch and select **v0.10 Watch
+> Learning (experimental)** in Ranking, then watch normally. The older,
+> manually labeled frozen-pool experiment remains available only as an
+> optional research tool; it is NOT required for watch-driven personalization.
 >
-> **No algorithm changes will be merged to main until real evidence shows
-> an improvement.**
+> **No experimental algorithm change will be merged to main until real
+> evidence shows an improvement.** Use v0.9 Semantic as the stable comparison.
 
 ## New in v0.9 — optional local Semantic Interest Engine
 

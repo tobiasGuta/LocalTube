@@ -317,18 +317,38 @@ function renderGrid() {
   $("empty-action").textContent = state.filter !== "All" ? "Show all" : empty[2];
 }
 
+
+async function loadWatchLearningStats() {
+  try {
+    const data = await api("/api/watch-learning/stats");
+    $("watch-learning-insights").textContent =
+      data.sessions + " playback sessions tracked · " +
+      data.meaningful_sessions + " meaningful sessions · " +
+      data.positive_examples + " positive examples · " +
+      data.negative_examples + " explicit dislikes. " +
+      "Quick exits remain neutral. Your original v0.9 history is preserved.";
+  } catch (_) {
+    $("watch-learning-insights").textContent = "Watch Learning statistics unavailable.";
+  }
+}
+
 async function checkSemanticAvailability() {
   const option = $("ranking-model").querySelector('option[value="semantic"]');
+  const watchOption = $("ranking-model").querySelector('option[value="watch"]');
   try {
     const data = await api("/api/semantic/status");
     state.semanticReady = Boolean(data.ready);
     option.disabled = !state.semanticReady;
     option.textContent = state.semanticReady
       ? "v0.9 Semantic (local)" : "v0.9 Semantic (setup)";
+    watchOption.disabled = !state.semanticReady;
+    watchOption.textContent = state.semanticReady
+      ? "v0.10 Watch Learning (experimental)" : "v0.10 Watch Learning (setup)";
     $("semantic-status").textContent = data.message;
   } catch (_) {
     state.semanticReady = false;
     option.disabled = true;
+    watchOption.disabled = true;
     $("semantic-status").textContent =
       "Model status unavailable. v0.8 Content and v0.6 Baseline still work.";
   }
@@ -483,7 +503,11 @@ async function loadView(view, {refresh = false} = {}) {
           : state.ranker === "semantic"
             ? "v0.9 local semantics (" + (feed.semantic_examples || 0) +
               " learning examples), balance " + state.balance
-            : "v0.8 content-based, balance " + state.balance) +
+            : state.ranker === "watch"
+              ? "v0.10 watch-driven semantics (" + (feed.watch_learning?.groups || 0) +
+                " interest groups, " + (feed.watch_learning?.meaningful_sessions || 0) +
+                " meaningful sessions), balance " + state.balance
+              : "v0.8 content-based, balance " + state.balance) +
         " ranking"
       : "Add an interest or play a saved video to start discovering.");
     renderShell();
@@ -594,17 +618,32 @@ async function removeVideo(video) {
   } catch (err) { notice(err.message, true); }
 }
 
+function newPlaybackSessionId() {
+  // Session IDs are unique event deduplication identifiers, not credentials.
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID().replace(/-/g, "");
+  if (window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  }
+  return (Date.now().toString(36) + Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2)).slice(0, 32);
+}
+
 async function play(video) {
   if (!validId(video.id)) return notice("Invalid video ID.", true);
   try {
     await ensureSaved(video);
-    await api("/api/videos/" + encodeURIComponent(video.id) + "/play", {method: "POST"});
+    const sessionId = newPlaybackSessionId();
+    await api("/api/videos/" + encodeURIComponent(video.id) + "/play", {
+      method: "POST", body: JSON.stringify({session_id: sessionId})
+    });
     await loadSaved();
     state.currentVideo = video;
     $("player-title").textContent = video.title;
     updatePlayerLike();
     const saved = state.saved.find(item => item.id === video.id);
-    await window.LocalTubePlayer.open(video, saved);
+    await window.LocalTubePlayer.open(video, saved, sessionId);
     renderGrid();
   } catch (err) { notice(err.message, true); }
 }
@@ -628,8 +667,8 @@ document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventLis
 $("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("ranking-model").addEventListener("change", (event) => {
   const selection = event.currentTarget.value;
-  state.ranker = selection === "semantic" && state.semanticReady
-    ? "semantic" : selection === "baseline" ? "baseline" : "content";
+  state.ranker = ["semantic", "watch"].includes(selection) && state.semanticReady
+    ? selection : selection === "baseline" ? "baseline" : "content";
   updateFeedBalanceControl();
   if (state.view === "home" || state.view === "explore") loadView(state.view);
 });
@@ -643,7 +682,7 @@ $("feed-balance").addEventListener("change", (event) => {
   state.balance = Number(event.currentTarget.value);
   updateFeedBalanceControl();
   try { localStorage.setItem("localtube-feed-balance", String(state.balance)); } catch (_) {}
-  if ((state.view === "home" || state.view === "explore") && state.ranker === "content") {
+  if ((state.view === "home" || state.view === "explore") && state.ranker !== "baseline") {
     loadView(state.view); // Uses existing cached candidates; no refresh cursor change.
   }
 });
@@ -706,6 +745,7 @@ $("open-interests").addEventListener("click", () => {
   $("interests-dialog").showModal();
   loadInsights();
   loadWatchStats();
+  loadWatchLearningStats();
 });
 $("close-interests").addEventListener("click", () => $("interests-dialog").close());
 $("topic-form").addEventListener("submit", async (event) => {

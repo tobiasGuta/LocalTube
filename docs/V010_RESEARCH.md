@@ -1,8 +1,12 @@
 # v0.10 Research: Evaluation and Multi-Interest Experiments
 
 **Status: EXPERIMENTAL.** This work lives on branch
-**research/v0.10-evaluation**, not main. It does not change production FastAPI
-routes, the default feed, the v0.9 algorithm, or the database schema.
+**research/v0.10-evaluation**, not main. The original v0.9 feed remains
+available unchanged. In addition to the frozen-pool evaluation documented
+here, this research branch NOW has an optional new **v0.10 Watch Learning**
+runtime mode, non-destructive local playback-session table, and automatic
+learning from meaningful watches. See [WATCH_LEARNING.md](WATCH_LEARNING.md)
+for that implementation, privacy controls, and limitations. Main is unaffected.
 
 ## What we're testing
 

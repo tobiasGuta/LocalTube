@@ -204,3 +204,28 @@ def test_why_this_video_opens_visible_local_explanation_dialog():
     assert ".why-modal" in css
     assert ".why-factor-number.is-negative" in css
     assert "These are explainable ranking signals, not probabilities" in html
+
+
+
+def test_v010_watch_learning_is_opt_in_and_has_session_ui():
+    """Research mode must not replace v0.9 or load Google on the home page."""
+    html = HTML.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    player = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
+    parser = PageParser()
+    parser.feed(html)
+    assert {"watch-learning-title", "watch-learning-insights"}.issubset(parser.ids)
+    assert 'option value="semantic" disabled' in html
+    assert 'option value="watch" disabled' in html
+    assert 'v0.10 Watch Learning' in html
+    assert 'watchOption.disabled = !state.semanticReady' in script
+    assert 'selection === "baseline"' in script
+    assert 'ranker: "content"' in script  # Production behavior remains default.
+    assert "newPlaybackSessionId()" in script
+    assert 'body: JSON.stringify({session_id: sessionId})' in script
+    assert 'window.LocalTubePlayer.open(video, saved, sessionId)' in script
+    assert '"/api/watch-learning/stats"' in script
+    assert 'session_id: session.sessionId' in player
+    assert 'sequence: ++session.sequence' in player
+    assert 'https://www.youtube-nocookie.com/embed/' in player
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]
