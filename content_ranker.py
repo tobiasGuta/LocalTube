@@ -85,7 +85,8 @@ def rank_content(
 
     seeds = [(video, _seed_weight(video)) for video in library]
     positives = [(v, weight) for v, weight in seeds if weight > 0]
-    negatives = [(v, 1.0) for v, weight in seeds if weight < 0]
+    # Preserve the negative sign: disliked titles must penalize, not reward, matches.
+    negatives = [(v, weight) for v, weight in seeds if weight < 0]
     positives.sort(key=lambda item: -item[1])
     seeds = positives[:30] + negatives[:15]
     pool_ids = list(pool)

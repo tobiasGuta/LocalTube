@@ -100,7 +100,8 @@ def test_tracking_controls_are_local_and_not_loaded_before_play():
     assert "window.LocalTubePlayer.open(video, saved)" in app
     assert "window.LocalTubePlayer.close()" in app
     assert "/api/stats" in app
-    assert "?refresh=true" in app
+    # v0.7 adds ranker/refine query parameters first, then the refresh flag.
+    assert '(refresh ? "&refresh=true" : "")' in app
     assert 'script.src = "https://www.youtube.com/iframe_api"' in player
     assert 'https://www.youtube-nocookie.com/embed/' in player
     assert "video.watched_seconds" in app

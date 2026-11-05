@@ -65,6 +65,8 @@ def test_disliked_title_similarity_is_a_penalty():
     ], profile, disliked, {"bad"})
     assert ranked[0]["id"] == "bbbbbbbbbbb"
     assert ranked[1]["score_breakdown"]["disliked_similarity"] < 0
+    assert ranked[1]["score_breakdown"]["title"] == 0
+    # A dislike must never become a positive title-matching signal.
 
 
 def test_duplicate_candidates_and_creator_variety():
