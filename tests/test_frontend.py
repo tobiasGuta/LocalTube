@@ -97,7 +97,7 @@ def test_tracking_controls_are_local_and_not_loaded_before_play():
     assert 'data-view="history"' in html
     assert 'id="watch-stats"' in html
     assert 'id="watch-status"' in html
-    assert "window.LocalTubePlayer.open(video, saved)" in app
+    assert "window.LocalTubePlayer.open(video, saved, sessionId)" in app
     assert "window.LocalTubePlayer.close()" in app
     assert "/api/stats" in app
     # v0.7 adds ranker/refine query parameters first, then the refresh flag.
@@ -158,7 +158,8 @@ def test_v09_optional_semantic_mode_ui_and_documentation():
     assert 'id="semantic-title"' in html
     assert 'requirements-semantic.txt' in html
     assert 'python -m semantic_engine download' in html
-    assert 'LocalTube v0.9' in html
+    assert 'LocalTube v0.10 research' in html
+    assert 'v0.9 Semantic (setup)' in html
     assert 'async function checkSemanticAvailability()' in script
     assert 'api("/api/semantic/status")' in script
     assert '"semantic" && state.semanticReady' in script
