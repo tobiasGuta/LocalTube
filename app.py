@@ -21,6 +21,7 @@ from recommender import build_profile, topics_to_search, rank_feed
 from discovery_plan import build_queries
 from content_ranker import rank_content
 from contextual_relevance import contextual_scores
+import learning_ranker as ml
 from watch_learning import (
     meaningful_threshold, meaningful_sessions, watch_features,
     watch_profile_library, session_examples,
@@ -97,6 +98,7 @@ def init_db():
         )""")
         db.execute("""CREATE INDEX IF NOT EXISTS watch_sessions_by_video
             ON watch_sessions(video_id, updated_at)""")
+        ml.initialize(db)
 
 
 
@@ -175,6 +177,10 @@ class WatchProgress(BaseModel):
 
 class Feedback(BaseModel):
     rating: int = Field(ge=-1, le=1)
+
+
+class Exposures(BaseModel):
+    tokens: list[str] = Field(min_length=1, max_length=24)
 
 
 class NewTopic(BaseModel):
@@ -273,6 +279,12 @@ def feedback(video_id: str, value: Feedback):
         )
         if not changed.rowcount:
             raise HTTPException(404, "Video not found")
+        ml.record_outcome(
+            db, video_id, 1 if value.rating == 1 else (
+                0 if value.rating == -1 else None),
+            "like" if value.rating == 1 else (
+                "dislike" if value.rating == -1 else "unrate"),
+        )
         return as_video(db.execute("SELECT * FROM videos WHERE id=?", (video_id,)).fetchone())
 
 
@@ -318,6 +330,9 @@ def update_progress(video_id: str, progress: WatchProgress):
                 (progress.watched_delta, duration, int(completed), stamp,
                  progress.sequence, progress.session_id),
             )
+            if total >= meaningful_threshold(duration) and old["rating"] != -1:
+                # Confirmed session-level watch, not a play click or seek.
+                ml.record_outcome(db, video_id, 1, "watch")
         position = 0.0 if completed else progress.position_seconds
         db.execute(
             """UPDATE videos
@@ -370,6 +385,7 @@ def delete(video_id: str):
         if not db.execute("DELETE FROM videos WHERE id=?", (video_id,)).rowcount:
             raise HTTPException(404, "Video not found")
         db.execute("DELETE FROM watch_sessions WHERE video_id=?", (video_id,))
+        ml.forget_video(db, video_id)
 
 
 def _watch_sessions() -> list[dict]:
@@ -398,6 +414,27 @@ def clear_watch_learning_sessions():
     """Explicitly clear session learning, never the pre-existing watch library."""
     with connect() as db:
         db.execute("DELETE FROM watch_sessions")
+
+
+@app.get("/api/learning/status")
+def learning_status():
+    """Aggregate training diagnostics, entirely on-device."""
+    with connect() as db:
+        return ml.status(db)
+
+
+@app.post("/api/learning/exposures")
+def learning_exposures(value: Exposures):
+    """Only confirm visible candidate tokens; unseen is not a dislike."""
+    with connect() as db:
+        return {"recorded": ml.mark_seen(db, value.tokens)}
+
+
+@app.delete("/api/learning/data", status_code=204)
+def clear_learning_data():
+    """Reset only v0.11 model/candidate/labels, not past watch history."""
+    with connect() as db:
+        ml.reset(db)
 
 
 @app.get("/api/recommendations")
@@ -489,7 +526,7 @@ def remove_topic(topic: str):
 @app.get("/api/discover")
 def discover(
     q: str = Query(min_length=2, max_length=80),
-    ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch)$"),
+    ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch|ml)$"),
 ):
     """Explicit search, with optional LOCAL context from the query's own topic."""
     term = " ".join(q.split())
@@ -497,7 +534,7 @@ def discover(
     library = videos()
     dismissed = {v["id"] for v in library if v["rating"] == -1}
     results = [v for v in found if v.get("id") not in dismissed]
-    if ranker != "watch" or len(results) < 2:
+    if ranker not in ("watch", "ml") or len(results) < 2:
         return [{**v, "tags": [term[:30].lower()], "reason": "Search result"}
                 for v in results]
     sessions = _watch_sessions()
@@ -555,11 +592,11 @@ def get_semantic_status():
 def feed(refresh: bool = False,
          refine: bool = True,
          balance: int = Query(default=65, ge=0, le=100),
-         ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch)$")):
+         ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch|ml)$")):
     """Generate better candidates, keep baseline and new ranker comparable."""
     # Explicit opt-in: the default content/baseline paths never load fastembed.
     model = None
-    if ranker in ("semantic", "watch"):
+    if ranker in ("semantic", "watch", "ml"):
         try:
             model = get_model()
         except ModelUnavailable as exc:
@@ -567,10 +604,10 @@ def feed(refresh: bool = False,
                 409, str(exc) + " Choose v0.8 Content until setup is complete."
             ) from exc
     library = videos()
-    sessions = _watch_sessions() if ranker == "watch" else []
+    sessions = _watch_sessions() if ranker in ("watch", "ml") else []
     ranking_library = (watch_profile_library(library, sessions)
-                       if ranker == "watch" else library)
-    if ranker == "watch":
+                       if ranker in ("watch", "ml") else library)
+    if ranker in ("watch", "ml"):
         with connect() as db:
             chosen_topics = [row["topic"] for row in db.execute("SELECT topic FROM topics")]
         interests = build_profile(chosen_topics, ranking_library)
@@ -610,7 +647,7 @@ def feed(refresh: bool = False,
     semantic_scores = None
     watch_summary = None
     context_scores = None
-    if ranker in ("semantic", "watch"):
+    if ranker in ("semantic", "watch", "ml"):
         try:
             learned_examples = len(examples_from(library))
             # Optional expansion only when the user allows refined YouTube
@@ -629,7 +666,7 @@ def feed(refresh: bool = False,
                         extra_query = query
                     except HTTPException:
                         pass
-            if ranker == "watch":
+            if ranker in ("watch", "ml"):
                 semantic_scores, watch_summary = watch_features(
                     batches, library, sessions, connect, model=model)
                 context_scores = contextual_scores(
@@ -656,14 +693,21 @@ def feed(refresh: bool = False,
             semantic_scores=semantic_scores,
             context_scores=context_scores,
         )
+    learning_stats = None
+    if ranker == "ml":
+        with connect() as db:
+            ranked = ml.predict(db, ranked)
+            ranked = ml.register(db, ranked)
+            learning_stats = ml.status(db)
     return {
         "topics": topics,
         "videos": ranked,
         "cursor": cursor,
         "ranker": ranker,
         "balance": balance if ranker != "baseline" else None,
-        "semantic_examples": learned_examples if ranker in ("semantic", "watch") else None,
+        "semantic_examples": learned_examples if ranker in ("semantic", "watch", "ml") else None,
         "watch_learning": watch_summary,
+        "ml_learning": learning_stats,
         "semantic_expanded": extra_query is not None,
         "queries_used": len(batches),
         "candidates_considered": len({

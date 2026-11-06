@@ -12,7 +12,7 @@ try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; 
 try { state.refine = localStorage.getItem("localtube-refined-search") !== "off"; } catch (_) {}
 try {
   const preferred = localStorage.getItem("localtube-ranking-model");
-  if (["baseline", "content", "semantic", "watch"].includes(preferred)) {
+  if (["baseline", "content", "semantic", "watch", "ml"].includes(preferred)) {
     state.preferredRanker = preferred;
   }
 } catch (_) {}
@@ -134,6 +134,7 @@ function updatePlayerLike() {
 // the page-level status text (which can be off-screen when the user scrolls).
 // These are local, per-candidate heuristic contributions, NOT probabilities.
 const SCORE_EXPLANATIONS = [
+  ["ml_adjustment", "Learned ML adjustment", "A bounded score adjustment from the locally trained ranking model. Not a confidence guarantee."],
   ["semantic_positive", "Semantic similarity", "The video's meaning resembles titles you liked or meaningfully watched."],
   ["semantic_negative", "Disliked semantic similarity", "The video's meaning resembles titles you marked Not interested."],
   ["interest_alignment", "Search-context alignment", "Similarity to videos you enjoyed from this search topic, compared with other results; negative values indicate poorer matches."],
@@ -315,11 +316,76 @@ function renderFilters() {
   }
 }
 
+let learningObserver = null;
+const pendingExposures = new Set();
+let exposureTimer = null;
+
+async function markLearningExposure(video) {
+  if (!video?.impression_token) return;
+  pendingExposures.delete(video.impression_token);
+  try {
+    await api("/api/learning/exposures", {
+      method: "POST",
+      body: JSON.stringify({tokens: [video.impression_token]})
+    });
+  } catch (_) {
+    // An analytics failure must not prevent playback or explicit feedback.
+  }
+}
+
+function queueLearningExposure(token) {
+  pendingExposures.add(token);
+  if (exposureTimer) return;
+  exposureTimer = setTimeout(async () => {
+    exposureTimer = null;
+    const tokens = [...pendingExposures].slice(0, 24);
+    for (const value of tokens) pendingExposures.delete(value);
+    if (!tokens.length) return;
+    try {
+      await api("/api/learning/exposures", {
+        method: "POST", body: JSON.stringify({tokens})
+      });
+    } catch (_) {}
+    if (pendingExposures.size) {
+      const next = [...pendingExposures].slice(0, 24);
+      for (const value of next) pendingExposures.delete(value);
+      try {
+        await api("/api/learning/exposures", {
+          method: "POST", body: JSON.stringify({tokens: next})
+        });
+      } catch (_) {}
+    }
+  }, 350);
+}
+
 function renderGrid() {
   const root = $("video-grid");
+  if (learningObserver) {
+    learningObserver.disconnect();
+    learningObserver = null;
+  }
   root.replaceChildren();
   const videos = filteredResults();
-  for (const video of videos) root.append(renderCard(video));
+  if (state.ranker === "ml" && ["home", "explore"].includes(state.view) &&
+      "IntersectionObserver" in window) {
+    learningObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          const token = entry.target.dataset.learningToken;
+          if (token) queueLearningExposure(token);
+          learningObserver?.unobserve(entry.target);
+        }
+      }
+    }, {threshold: 0.6});
+  }
+  for (const video of videos) {
+    const card = renderCard(video);
+    if (learningObserver && video.impression_token) {
+      card.dataset.learningToken = video.impression_token;
+      learningObserver.observe(card);
+    }
+    root.append(card);
+  }
   $("empty-state").hidden = videos.length !== 0;
   if (videos.length) return;
   const empty = {
@@ -350,7 +416,20 @@ async function loadWatchLearningStats() {
   }
 }
 
+async function loadLocalLearningStats() {
+  try {
+    const data = await api("/api/learning/status");
+    $("ml-learning-insights").textContent =
+      data.exposures + " visible cards logged · " + data.examples +
+      " confirmed training outcomes (" + data.positives +
+      " positive, " + data.negatives + " negative). " + data.message;
+  } catch (_) {
+    $("ml-learning-insights").textContent = "Local ML statistics unavailable.";
+  }
+}
+
 async function checkSemanticAvailability() {
+  const mlOption = $("ranking-model").querySelector('option[value="ml"]');
   const option = $("ranking-model").querySelector('option[value="semantic"]');
   const watchOption = $("ranking-model").querySelector('option[value="watch"]');
   try {
@@ -360,6 +439,9 @@ async function checkSemanticAvailability() {
     option.textContent = state.semanticReady
       ? "v0.9 Semantic (local)" : "v0.9 Semantic (setup)";
     watchOption.disabled = !state.semanticReady;
+    mlOption.disabled = !state.semanticReady;
+    mlOption.textContent = state.semanticReady
+      ? "v0.11 Local ML (experimental)" : "v0.11 Local ML (setup)";
     watchOption.textContent = state.semanticReady
       ? "v0.10 Watch Learning (experimental)" : "v0.10 Watch Learning (setup)";
     $("semantic-status").textContent = data.message;
@@ -367,13 +449,14 @@ async function checkSemanticAvailability() {
     state.semanticReady = false;
     option.disabled = true;
     watchOption.disabled = true;
+    mlOption.disabled = true;
     $("semantic-status").textContent =
       "Model status unavailable. v0.8 Content and v0.6 Baseline still work.";
   }
   // Restore a selected local ranking mode across refreshes, but never
   // select a semantic model if it is unavailable on this machine.
   const desired = state.preferredRanker;
-  state.ranker = ["semantic", "watch"].includes(desired) && !state.semanticReady
+  state.ranker = ["semantic", "watch", "ml"].includes(desired) && !state.semanticReady
     ? "content" : desired;
   $("ranking-model").value = state.ranker;
 }
@@ -531,6 +614,11 @@ async function loadView(view, {refresh = false} = {}) {
               ? "v0.10 watch-driven semantics (" + (feed.watch_learning?.groups || 0) +
                 " interest groups, " + (feed.watch_learning?.meaningful_sessions || 0) +
                 " meaningful sessions), balance " + state.balance
+            : state.ranker === "ml"
+              ? "v0.11 local ML (" + (feed.ml_learning?.examples || 0) +
+                " real training outcomes · " +
+                (feed.ml_learning?.trained ? "learned weights active" : "collecting evidence; v0.10 fallback") +
+                "), balance " + state.balance
               : "v0.8 content-based, balance " + state.balance) +
         " ranking"
       : "Add an interest or play a saved video to start discovering.");
@@ -599,6 +687,7 @@ function toggleLike(video) {
 }
 
 async function rateVideo(video, rating) {
+  await markLearningExposure(video);
   if (state.pendingLikes.has(video.id)) return;
   state.pendingLikes.add(video.id);
   renderGrid();
@@ -623,6 +712,7 @@ async function rateVideo(video, rating) {
 }
 
 async function dismissVideo(video) {
+  await markLearningExposure(video);
   try {
     await ensureSaved(video);
     await api("/api/videos/" + encodeURIComponent(video.id) + "/feedback", {
@@ -661,6 +751,7 @@ function newPlaybackSessionId() {
 
 async function play(video) {
   if (!validId(video.id)) return notice("Invalid video ID.", true);
+  await markLearningExposure(video);
   try {
     await ensureSaved(video);
     const sessionId = newPlaybackSessionId();
@@ -696,7 +787,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventLis
 $("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("ranking-model").addEventListener("change", (event) => {
   const selection = event.currentTarget.value;
-  state.ranker = ["semantic", "watch"].includes(selection) && state.semanticReady
+  state.ranker = ["semantic", "watch", "ml"].includes(selection) && state.semanticReady
     ? selection : selection === "baseline" ? "baseline" : "content";
   state.preferredRanker = state.ranker;
   try { localStorage.setItem("localtube-ranking-model", state.ranker); } catch (_) {}
@@ -777,6 +868,7 @@ $("open-interests").addEventListener("click", () => {
   loadInsights();
   loadWatchStats();
   loadWatchLearningStats();
+  loadLocalLearningStats();
 });
 $("close-interests").addEventListener("click", () => $("interests-dialog").close());
 $("topic-form").addEventListener("submit", async (event) => {

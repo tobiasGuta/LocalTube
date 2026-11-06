@@ -76,7 +76,7 @@
     <div class="sidebar-footer">
       <span class="local-badge"><span class="local-dot"></span> Local-first</span>
       <p>No Google account required. Search and playback still contact YouTube.</p>
-      <span>LocalTube v0.10 research</span>
+      <span>LocalTube v0.11 research</span>
     </div>
   </aside>
   <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation" hidden></button>
@@ -91,6 +91,7 @@
           <option value="baseline">v0.6 Baseline</option>
           <option value="semantic" disabled>v0.9 Semantic (setup)</option>
           <option value="watch" disabled>v0.10 Watch Learning (setup)</option>
+          <option value="ml" disabled>v0.11 Local ML (setup)</option>
         </select>
       </label>
       <div id="feed-balance-control" class="feed-balance-control" role="group" aria-labelledby="feed-balance-heading">
@@ -179,6 +180,11 @@
         <h3 id="watch-learning-title">Watch Learning (research v0.10)</h3>
         <p class="dialog-description">Automatically learns from meaningful playback sessions, completions and return visits. A brief exit is not a dislike. The local BGE model is reused without retraining; your v0.9 algorithm remains available.</p>
         <p id="watch-learning-insights" role="status" aria-live="polite">Open Manage Interests to load local watch-learning statistics.</p>
+      </section>
+      <section class="semantic-panel" aria-labelledby="ml-learning-title">
+        <h3 id="ml-learning-title">v0.11 Local Learning Ranker (research)</h3>
+        <p class="dialog-description">The optional small model trains on confirmed meaningful watches, likes and Not interested after a recommendation is visibly shown. Merely appearing, not clicking, or quickly leaving never creates a negative training example. With too little evidence, v0.11 uses the v0.10 ranking unchanged. Data and training stay local.</p>
+        <p id="ml-learning-insights" role="status" aria-live="polite">Open Manage Interests to see local training progress.</p>
       </section>
       <h3 class="stats-title">Your local viewing stats</h3>
       <div id="watch-stats" class="watch-stats"></div>

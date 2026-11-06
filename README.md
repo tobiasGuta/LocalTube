@@ -2,28 +2,27 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
-> **Research branch notice:** v0.10 experiments live on
-> research/v0.10-evaluation, not main. The production v0.9 branch stays
-> unchanged. This branch adds a separate, optional **v0.10 Watch Learning**
-> ranking mode that automatically adapts to meaningful watching sessions,
-> without manually rating candidate JSON snapshots. The original v0.9
-> Semantic ranking remains selectable and unchanged.
-> Read [the Watch Learning guide](docs/WATCH_LEARNING.md) for setup, equations,
-> privacy, reset controls, limitations, and tests.
-> [Contextual Discovery and Feedback](docs/CONTEXTUAL_DISCOVERY.md)
-> explains why ambiguous search terms can return irrelevant videos, how local
-> watch examples rerank those results, and how fresh dislikes are used.
-> Read [the v0.10 research guide](docs/V010_RESEARCH.md) for the experiment,
-> why the comparison is fair, offline tests and how to capture private
-> candidate snapshots without extra YouTube searches.
+> **Research branch notice:** The new **v0.11 Local ML (experimental)**
+> mode lives on research/v0.11-online-ranker, not main or the frozen
+> research/v0.10-evaluation branch. It trains a small local ranking model
+> from genuine meaningful watch sessions and explicit Like/Not interested,
+> after a recommendation is actually visible. Merely ignoring or not
+> clicking a card never creates a negative label. No manually labeled
+> JSON snapshots or hardcoded topic names are required.
 >
-> To try the new mode, start the research branch and select **v0.10 Watch
-> Learning (experimental)** in Ranking, then watch normally. The older,
-> manually labeled frozen-pool experiment remains available only as an
-> optional research tool; it is NOT required for watch-driven personalization.
+> **[v0.11 local ML research guide](docs/V011_LOCAL_ML.md)** — setup, local
+> training equations, recorded impressions, privacy, reset, regression
+> tests and important limitations. Compatible Python 3.14 and an installed
+> local BGE encoder are required for v0.11.
 >
-> **No experimental algorithm change will be merged to main until real
-> evidence shows an improvement.** Use v0.9 Semantic as the stable comparison.
+> Original v0.10 [Watch Learning](docs/WATCH_LEARNING.md), v0.10
+> [contextual discovery](docs/CONTEXTUAL_DISCOVERY.md), the v0.9 semantic
+> model, content ranking and baseline modes remain available.
+>
+> **Do not merge experimental recommendation changes into main until actual
+> viewing data shows improvement.** v0.11 initially falls back to the
+> identical v0.10 ordering until enough confirmed positive and negative
+> examples exist. Trained weights are NOT validated recommendation quality.
 
 ## New in v0.9 — optional local Semantic Interest Engine
 

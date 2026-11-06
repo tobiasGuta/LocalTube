@@ -158,11 +158,11 @@ def test_v09_optional_semantic_mode_ui_and_documentation():
     assert 'id="semantic-title"' in html
     assert 'requirements-semantic.txt' in html
     assert 'python -m semantic_engine download' in html
-    assert 'LocalTube v0.10 research' in html
+    assert 'LocalTube v0.11 research' in html
     assert 'v0.9 Semantic (setup)' in html
     assert 'async function checkSemanticAvailability()' in script
     assert 'api("/api/semantic/status")' in script
-    assert '["semantic", "watch"].includes(selection) && state.semanticReady' in script
+    assert '["semantic", "watch", "ml"].includes(selection) && state.semanticReady' in script
     assert 'semantic_examples' in script
     assert 'semantic_positive' in script
     assert 'Semantic Interest Engine' in docs
@@ -254,6 +254,28 @@ def test_selected_research_ranker_is_remembered_across_browser_reload():
     script = JS.read_text(encoding="utf-8")
     assert 'localStorage.getItem("localtube-ranking-model")' in script
     assert 'localStorage.setItem("localtube-ranking-model", state.ranker)' in script
-    assert '["semantic", "watch"].includes(desired) && !state.semanticReady' in script
+    assert '["semantic", "watch", "ml"].includes(desired) && !state.semanticReady' in script
     assert '$("ranking-model").value = state.ranker' in script
     assert 'ranker: "content"' in script  # Safe fallback on new browser.
+
+
+
+def test_v011_training_is_explicit_opt_in_and_viewport_gated():
+    html = HTML.read_text(encoding="utf-8")
+    script = JS.read_text(encoding="utf-8")
+    parser = PageParser()
+    parser.feed(html)
+    assert 'option value="ml" disabled' in html
+    assert 'v0.11 Local ML' in html
+    assert {"ml-learning-title", "ml-learning-insights"}.issubset(parser.ids)
+    assert 'mlOption.disabled = !state.semanticReady' in script
+    assert 'localStorage.getItem("localtube-ranking-model")' in script
+    assert '"ml"].includes(desired)' in script
+    assert "new IntersectionObserver" in script
+    assert "entry.intersectionRatio >= 0.6" in script
+    assert '"/api/learning/exposures"' in script
+    assert 'await markLearningExposure(video)' in script
+    assert '["home", "explore"].includes(state.view)' in script
+    assert 'data.ml_learning?.trained' not in script or "ml_learning" in script
+    assert 'ranker: "content"' in script
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]
