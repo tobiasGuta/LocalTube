@@ -105,7 +105,7 @@ def test_failed_resolution_does_not_subscribe(tmp_path, monkeypatch):
         assert response.status_code == 502
         assert client.get("/api/subscriptions").json() == []
         assert subscribe(client, "not-an-id").status_code == 422
-        assert subscribe(client, A, video_id="not-a-video").status_code == 422
+        assert subscribe(client, A, video_id="invalid").status_code == 422
 
 
 def test_subscriptions_feed_uses_real_channel_uploads_not_name_search(
