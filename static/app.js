@@ -6,10 +6,16 @@ const state = {
   view: "home", results: [], saved: [], topics: [], filter: "All",
   thumbnails: false, query: "", requestToken: 0,
   currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true, balance: 65,
-  semanticReady: false
+  semanticReady: false, preferredRanker: "content"
 };
 try { state.thumbnails = localStorage.getItem("localtube-thumbnails") === "on"; } catch (_) {}
 try { state.refine = localStorage.getItem("localtube-refined-search") !== "off"; } catch (_) {}
+try {
+  const preferred = localStorage.getItem("localtube-ranking-model");
+  if (["baseline", "content", "semantic", "watch"].includes(preferred)) {
+    state.preferredRanker = preferred;
+  }
+} catch (_) {}
 try {
   const savedBalance = localStorage.getItem("localtube-feed-balance");
   if (savedBalance !== null && /^\d{1,3}$/.test(savedBalance)) {
@@ -130,6 +136,8 @@ function updatePlayerLike() {
 const SCORE_EXPLANATIONS = [
   ["semantic_positive", "Semantic similarity", "The video's meaning resembles titles you liked or meaningfully watched."],
   ["semantic_negative", "Disliked semantic similarity", "The video's meaning resembles titles you marked Not interested."],
+  ["interest_alignment", "Search-context alignment", "Similarity to videos you enjoyed from this search topic, compared with other results; negative values indicate poorer matches."],
+  ["disinterest_contrast", "Not-interested contrast", "The video resembles content you dismissed more strongly than your positive examples in this search topic."],
   ["topic", "Topic relevance", "How strongly this video's search topic matches your current interests."],
   ["title", "Title-word similarity", "Meaningful words shared with titles from your viewing history (TF-IDF)."],
   ["creator", "Creator familiarity", "Your previous likes or viewing activity for this creator."],
@@ -255,6 +263,16 @@ function filteredResults() {
     .sort((a,b) => (b.last_watched_at || "").localeCompare(a.last_watched_at || ""));
   else videos = state.results;
 
+  // A played/dismissed card must disappear immediately, without waiting
+  // for a new search or full feed refresh. Explicit search results remain
+  // replayable; a search is intentionally different from Home discovery.
+  if (state.view === "home" || state.view === "explore") {
+    const seen = new Set(state.saved.filter(v =>
+      Number(v.plays) > 0 || Number(v.watched_seconds) > 0 ||
+      Number(v.rating) === -1).map(v => v.id));
+    videos = videos.filter(v => !seen.has(v.id));
+  }
+
   if (state.filter !== "All") {
     const filter = state.filter.toLowerCase();
     videos = videos.filter(v => (v.tags || []).some(tag => tag.toLowerCase() === filter));
@@ -352,6 +370,12 @@ async function checkSemanticAvailability() {
     $("semantic-status").textContent =
       "Model status unavailable. v0.8 Content and v0.6 Baseline still work.";
   }
+  // Restore a selected local ranking mode across refreshes, but never
+  // select a semantic model if it is unavailable on this machine.
+  const desired = state.preferredRanker;
+  state.ranker = ["semantic", "watch"].includes(desired) && !state.semanticReady
+    ? "content" : desired;
+  $("ranking-model").value = state.ranker;
 }
 
 function feedBalanceLabel(value) {
@@ -529,11 +553,16 @@ async function searchVideos(query) {
   renderShell();
   notice("Searching YouTube…");
   try {
-    const results = await api("/api/discover?q=" + encodeURIComponent(query));
+    const results = await api("/api/discover?q=" + encodeURIComponent(query) +
+      "&ranker=" + encodeURIComponent(state.ranker));
     if (token !== state.requestToken) return;
     state.results = results;
     renderShell();
-    notice(results.length ? "" : "No results. Try a broader search.");
+    const personalized = results.some(v =>
+      v.score_breakdown && v.score_breakdown.interest_alignment !== undefined);
+    notice(results.length
+      ? (personalized ? "Search results ordered using your local viewing interests. No extra searches." : "")
+      : "No results. Try a broader search.");
   } catch (err) {
     if (token !== state.requestToken) return;
     renderShell();
@@ -669,6 +698,8 @@ $("ranking-model").addEventListener("change", (event) => {
   const selection = event.currentTarget.value;
   state.ranker = ["semantic", "watch"].includes(selection) && state.semanticReady
     ? selection : selection === "baseline" ? "baseline" : "content";
+  state.preferredRanker = state.ranker;
+  try { localStorage.setItem("localtube-ranking-model", state.ranker); } catch (_) {}
   updateFeedBalanceControl();
   if (state.view === "home" || state.view === "explore") loadView(state.view);
 });

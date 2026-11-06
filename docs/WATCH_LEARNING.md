@@ -1,5 +1,9 @@
 # v0.10 Research — Watch-Driven Learning
 
+**New research improvement:** See [Contextual Discovery and Feedback](CONTEXTUAL_DISCOVERY.md)
+for learned search-term disambiguation, immediate removal of watched feed cards,
+recent Not-interested signals, and remembered ranking-mode selection.
+
 **Experimental branch only:** research/v0.10-evaluation. Not merged into
 main. The regular v0.9 Semantic option and its scoring formula remain
 available and unchanged.

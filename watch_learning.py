@@ -97,7 +97,16 @@ def session_examples(library: list[dict], sessions: list[dict],
         elif weight < 0:
             negatives.append((video, weight))
     positives.sort(key=lambda item: (-item[1], str(item[0]["id"])))
-    negatives.sort(key=lambda item: str(item[0]["id"]))
+    # Prefer RECENT explicit dismissals. Sorting solely by video ID could
+    # discard the newest "Not interested" signals once 12 exist.
+    negatives.sort(
+        key=lambda item: (
+            str(item[0].get("last_activity_at")
+                or item[0].get("last_watched_at") or ""),
+            str(item[0]["id"]),
+        ),
+        reverse=True,
+    )
     return positives[:MAX_POSITIVES] + negatives[:MAX_NEGATIVES]
 
 

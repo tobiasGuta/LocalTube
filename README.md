@@ -10,6 +10,9 @@
 > Semantic ranking remains selectable and unchanged.
 > Read [the Watch Learning guide](docs/WATCH_LEARNING.md) for setup, equations,
 > privacy, reset controls, limitations, and tests.
+> [Contextual Discovery and Feedback](docs/CONTEXTUAL_DISCOVERY.md)
+> explains why ambiguous search terms can return irrelevant videos, how local
+> watch examples rerank those results, and how fresh dislikes are used.
 > Read [the v0.10 research guide](docs/V010_RESEARCH.md) for the experiment,
 > why the comparison is fair, offline tests and how to capture private
 > candidate snapshots without extra YouTube searches.

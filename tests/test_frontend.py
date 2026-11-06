@@ -230,3 +230,30 @@ def test_v010_watch_learning_is_opt_in_and_has_session_ui():
     assert 'sequence: ++session.sequence' in player
     assert 'https://www.youtube-nocookie.com/embed/' in player
     assert parser.scripts == ["/static/player.js", "/static/app.js"]
+
+
+
+def test_watch_search_learns_context_and_keeps_replay_possible():
+    """Query meaning comes from local history, never named-topic rules."""
+    script = JS.read_text(encoding="utf-8")
+    player = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
+    assert '"/api/discover?q=" + encodeURIComponent(query) +' in script
+    assert '"&ranker=" + encodeURIComponent(state.ranker)' in script
+    assert 'score_breakdown.interest_alignment !== undefined' in script
+    assert '"interest_alignment", "Search-context alignment"' in script
+    assert '"disinterest_contrast", "Not-interested contrast"' in script
+    assert 'state.view === "home" || state.view === "explore"' in script
+    assert "Number(v.plays) > 0" in script
+    assert "Number(v.rating) === -1" in script
+    assert 'if (state.view === "home" || state.view === "explore") {' in script
+    assert 'window.LocalTubePlayer.open(video, saved, sessionId)' in script
+    assert 'sequence: ++session.sequence' in player
+
+
+def test_selected_research_ranker_is_remembered_across_browser_reload():
+    script = JS.read_text(encoding="utf-8")
+    assert 'localStorage.getItem("localtube-ranking-model")' in script
+    assert 'localStorage.setItem("localtube-ranking-model", state.ranker)' in script
+    assert '["semantic", "watch"].includes(desired) && !state.semanticReady' in script
+    assert '$("ranking-model").value = state.ranker' in script
+    assert 'ranker: "content"' in script  # Safe fallback on new browser.

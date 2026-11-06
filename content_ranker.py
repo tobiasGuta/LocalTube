@@ -57,6 +57,7 @@ def rank_content(
     limit: int = 24,
     balance: int = 65,
     semantic_scores: dict[str, dict[str, float]] | None = None,
+    context_scores: dict[str, dict[str, float]] | None = None,
 ) -> list[dict]:
     """Rank candidate videos using explainable bounded features and greedy variety.
 
@@ -149,6 +150,13 @@ def rank_content(
                 float(semantic.get("semantic_positive", 0.0)), 3)
             features[vid]["semantic_negative"] = round(
                 float(semantic.get("semantic_negative", 0.0)), 3)
+        if context_scores is not None:
+            # Research-only semantic disambiguation. Missing context is neutral
+            # and never changes old v0.8/v0.9 ranking behavior.
+            context = context_scores.get(vid, {})
+            for key in ("interest_alignment", "disinterest_contrast"):
+                if key in context:
+                    features[vid][key] = round(float(context[key]), 3)
 
     selected: list[dict] = []
     topic_count: dict[str, int] = defaultdict(int)

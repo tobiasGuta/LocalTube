@@ -20,6 +20,7 @@ from discovery import search_youtube
 from recommender import build_profile, topics_to_search, rank_feed
 from discovery_plan import build_queries
 from content_ranker import rank_content
+from contextual_relevance import contextual_scores
 from watch_learning import (
     meaningful_threshold, meaningful_sessions, watch_features,
     watch_profile_library, session_examples,
@@ -486,10 +487,42 @@ def remove_topic(topic: str):
 
 
 @app.get("/api/discover")
-def discover(q: str = Query(min_length=2, max_length=80)):
+def discover(
+    q: str = Query(min_length=2, max_length=80),
+    ranker: str = Query(default="content", pattern="^(content|baseline|semantic|watch)$"),
+):
+    """Explicit search, with optional LOCAL context from the query's own topic."""
     term = " ".join(q.split())
-    videos = _search_cached(term)
-    return [{**v, "tags": [term[:30].lower()], "reason": "Search result"} for v in videos]
+    found = _search_cached(term)  # Exactly the user-requested search.
+    library = videos()
+    dismissed = {v["id"] for v in library if v["rating"] == -1}
+    results = [v for v in found if v.get("id") not in dismissed]
+    if ranker != "watch" or len(results) < 2:
+        return [{**v, "tags": [term[:30].lower()], "reason": "Search result"}
+                for v in results]
+    sessions = _watch_sessions()
+    examples = session_examples(library, sessions)
+    try:
+        context = contextual_scores(
+            [(term, results)], examples, connect, model=get_model())
+    except ModelUnavailable as exc:
+        raise HTTPException(409, str(exc) + " Select another ranking mode.") from exc
+    except Exception as exc:
+        raise HTTPException(503, "Local search ranking failed; try v0.8 Content.") from exc
+    if not context:
+        # Insufficient local knowledge of this particular search: do not
+        # impose unrelated past interests on something new.
+        return [{**v, "tags": [term[:30].lower()], "reason": "Search result"}
+                for v in results]
+    focused_library = [
+        v for v in watch_profile_library(library, sessions)
+        if term.casefold() in {str(t).casefold() for t in v.get("tags", [])}
+    ]
+    profile = build_profile([term], focused_library)
+    return rank_content(
+        [(term, results)], profile, focused_library, dismissed,
+        limit=len(results), context_scores=context,
+    )
 
 
 def _profile():
@@ -576,6 +609,7 @@ def feed(refresh: bool = False,
     learned_examples = 0
     semantic_scores = None
     watch_summary = None
+    context_scores = None
     if ranker in ("semantic", "watch"):
         try:
             learned_examples = len(examples_from(library))
@@ -598,6 +632,9 @@ def feed(refresh: bool = False,
             if ranker == "watch":
                 semantic_scores, watch_summary = watch_features(
                     batches, library, sessions, connect, model=model)
+                context_scores = contextual_scores(
+                    batches, session_examples(library, sessions),
+                    connect, model=model)
                 learned_examples = watch_summary["examples"]
             else:
                 semantic_scores, learned_examples = semantic_features(
@@ -617,6 +654,7 @@ def feed(refresh: bool = False,
         ranked = rank_content(
             batches, interests, ranking_library, seen, limit=24, balance=balance,
             semantic_scores=semantic_scores,
+            context_scores=context_scores,
         )
     return {
         "topics": topics,
