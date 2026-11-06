@@ -3,7 +3,8 @@
 // Only the thumbnail display preference is stored in this browser.
 const $ = (id) => document.getElementById(id);
 const state = {
-  view: "home", results: [], saved: [], topics: [], filter: "All",
+  view: "home", results: [], saved: [], subscriptions: [], topics: [], filter: "All",
+  pendingSubscriptions: new Set(),
   thumbnails: false, query: "", requestToken: 0,
   currentVideo: null, pendingLikes: new Set(), ranker: "content", refine: true, balance: 65,
   semanticReady: false, preferredRanker: "content"
@@ -114,6 +115,121 @@ function likeButton(video) {
   return button;
 }
 
+function hasSubscription(video) {
+  return Boolean(video?.channel_id && state.subscriptions.some(
+    s => s.channel_id === video.channel_id));
+}
+
+function updatePlayerSubscription() {
+  const button = $("player-subscribe");
+  const video = state.currentVideo;
+  button.disabled = !video || state.pendingSubscriptions.has(video.id);
+  button.hidden = !video;
+  if (!video) return;
+  const subscribed = hasSubscription(video);
+  button.setAttribute("aria-pressed", String(subscribed));
+  button.textContent = subscribed ? "Subscribed" : "Subscribe";
+  button.classList.toggle("is-subscribed", subscribed);
+  button.setAttribute("aria-label",
+    (subscribed ? "Unsubscribe from " : "Subscribe to ") + channelOf(video));
+}
+
+function subscriptionButton(video) {
+  const subscribed = hasSubscription(video);
+  const button = action(subscribed ? "Subscribed" : "Subscribe",
+    () => toggleSubscription(video),
+    "subscribe-button" + (subscribed ? " is-subscribed" : ""));
+  button.disabled = state.pendingSubscriptions.has(video.id);
+  button.setAttribute("aria-pressed", String(subscribed));
+  button.setAttribute("aria-label",
+    (subscribed ? "Unsubscribe from " : "Subscribe to ") + channelOf(video));
+  return button;
+}
+
+async function loadSubscriptions() {
+  state.subscriptions = await api("/api/subscriptions");
+  $("subscription-count").textContent = state.subscriptions.length;
+  renderSubscriptionList();
+  updatePlayerSubscription();
+}
+
+function renderSubscriptionList() {
+  const root = $("subscription-list");
+  root.replaceChildren();
+  for (const sub of state.subscriptions) {
+    const line = make("div", "subscribed-channel-row");
+    const title = make("span", "subscribed-channel-name", sub.name);
+    const remove = action("Unsubscribe",
+      () => unsubscribeChannel(sub.channel_id, sub.name),
+      "subscribe-button is-subscribed");
+    remove.setAttribute("aria-label", "Unsubscribe from " + sub.name);
+    line.append(title, remove);
+    root.append(line);
+  }
+  if (!state.subscriptions.length) {
+    root.append(make("p", "dialog-description",
+      "No local subscriptions yet. Search or browse videos, then select Subscribe beside a creator."));
+  }
+}
+
+async function unsubscribeChannel(channelId, name) {
+  try {
+    await api("/api/subscriptions/" + encodeURIComponent(channelId), {
+      method: "DELETE"
+    });
+    await loadSubscriptions();
+    renderShell();
+    notice("Unsubscribed locally from " + name + ".");
+    if (state.view === "subscriptions" || (
+      ["home", "explore"].includes(state.view) && state.ranker === "ml")) {
+      await loadView(state.view);
+    }
+  } catch (err) {
+    notice(err.message, true);
+  }
+}
+
+async function toggleSubscription(video) {
+  if (!video || !validId(video.id) ||
+      state.pendingSubscriptions.has(video.id)) return;
+  state.pendingSubscriptions.add(video.id);
+  renderGrid();
+  updatePlayerSubscription();
+  try {
+    if (hasSubscription(video)) {
+      await unsubscribeChannel(video.channel_id, channelOf(video));
+    } else {
+      const record = await api("/api/subscriptions", {
+        method: "POST", body: JSON.stringify({
+          video_id: video.id,
+          channel_id: video.channel_id || null,
+          channel_name: channelOf(video)
+        })
+      });
+      // The server verifies a UC channel ID; older metadata is resolved
+      // only when the user explicitly chooses Subscribe.
+      video.channel_id = record.channel_id;
+      if (state.currentVideo?.id === video.id) {
+        state.currentVideo.channel_id = record.channel_id;
+      }
+      for (const saved of state.saved) {
+        if (saved.id === video.id) saved.channel_id = record.channel_id;
+      }
+      await loadSubscriptions();
+      notice("Subscribed locally to " + record.name + ".");
+      if (["home", "explore"].includes(state.view) && state.ranker === "ml") {
+        await loadView(state.view);
+      }
+    }
+  } catch (err) {
+    notice("Couldn't update subscription: " + err.message, true);
+  } finally {
+    state.pendingSubscriptions.delete(video.id);
+    renderGrid();
+    updatePlayerSubscription();
+  }
+}
+
 function updatePlayerLike() {
   const button = $("player-like");
   const video = state.currentVideo;
@@ -134,6 +250,7 @@ function updatePlayerLike() {
 // the page-level status text (which can be off-screen when the user scrolls).
 // These are local, per-candidate heuristic contributions, NOT probabilities.
 const SCORE_EXPLANATIONS = [
+  ["subscription_prior", "Subscribed creator", "Your explicit local subscription to this exact YouTube channel. The ML model also learns how helpful this signal is."],
   ["ml_adjustment", "Learned ML adjustment", "A bounded score adjustment from the locally trained ranking model. Not a confidence guarantee."],
   ["semantic_positive", "Semantic similarity", "The video's meaning resembles titles you liked or meaningfully watched."],
   ["semantic_negative", "Disliked semantic similarity", "The video's meaning resembles titles you marked Not interested."],
@@ -227,6 +344,9 @@ function renderCard(video) {
     details.textContent = video.reason || "Suggested for you";
   }
   content.append(title, channel, details);
+  if (channelOf(video) !== "Unknown creator") {
+    content.append(subscriptionButton(video));
+  }
 
   const menu = make("details", "video-actions");
   const summary = make("summary", "menu-summary", "⋮");
@@ -248,6 +368,8 @@ function renderCard(video) {
   if (video.score_breakdown) {
     menuAction("Why this video?", () => showWhyVideo(video));
   }
+  menuAction(hasSubscription(video) ? "Unsubscribe from creator" : "Subscribe to creator",
+    () => toggleSubscription(video));
   menuAction("Not interested", () => dismissVideo(video));
   if (saved) menuAction("Remove from library", () => removeVideo(video), true);
   menu.append(summary, menuItems);
@@ -288,7 +410,7 @@ function filteredResults() {
 function renderFilters() {
   const root = $("filter-chips");
   root.replaceChildren();
-  if (state.view === "search") {
+  if (state.view === "search" || state.view === "subscriptions") {
     root.hidden = true;
     return;
   }
@@ -392,6 +514,7 @@ function renderGrid() {
     home: ["Build your personal feed", "Add an interest or play saved videos, and LocalTube will find related suggestions.", "Choose interests"],
     explore: ["Nothing to explore yet", "Choose an interest or search for something you want to watch.", "Choose interests"],
     search: ["No videos found", "Try a different search phrase, or search for a broader topic.", "Go home"],
+    subscriptions: ["No subscribed uploads yet", "Subscribe to creators from search or recommendations. Some channels may temporarily block public metadata.", "Search videos"],
     library: ["Your library is empty", "Save a video to make it easy to find again.", "Add video"],
     liked: ["No liked videos yet", "Tap the thumbs-up beside a video to like it instantly.", "Go home"],
     history: ["Nothing watched yet", "Watch a video to begin building local watch history.", "Go home"]
@@ -486,6 +609,7 @@ function renderShell() {
     home: ["Recommended", "Videos chosen from your interests and local viewing activity."],
     explore: ["Explore videos", "Discover something new without signing in to Google."],
     search: ["Search results", 'Results for "' + state.query + '"'],
+    subscriptions: ["Subscriptions", "Recent public uploads from your locally subscribed channels, newest available first."],
     library: ["Your library", "Saved videos are kept on your Fedora computer."],
     liked: ["Liked videos", "The videos you have marked as favorites."],
     history: ["Watch history", "Videos you played, your viewing time and where to resume."]
@@ -493,6 +617,7 @@ function renderShell() {
   $("page-title").textContent = settings[0];
   $("page-description").textContent = settings[1];
   $("library-search-wrap").hidden = !["library", "liked", "history"].includes(state.view);
+  $("subscription-panel").hidden = state.view !== "subscriptions";
   $("back-to-feed").hidden = state.view !== "search";
   $("reload-feed").hidden = ["search", "library", "liked", "history"].includes(state.view);
   $("feed-balance-control").hidden =
@@ -587,6 +712,26 @@ async function loadView(view, {refresh = false} = {}) {
   const token = ++state.requestToken;
   closeMobileSidebar();
   notice("");
+  if (view === "subscriptions") {
+    state.results = [];
+    notice("Checking recent uploads from your subscriptions…");
+    renderShell();
+    try {
+      await loadSubscriptions();
+      const feed = await api("/api/subscriptions/feed" +
+        (refresh ? "?refresh=true" : ""));
+      if (token !== state.requestToken) return;
+      state.results = feed.videos;
+      renderShell();
+      notice(feed.failed_channels?.length
+        ? "Some channels couldn't be checked right now. Cached videos may still be shown."
+        : feed.videos.length + " public uploads across " +
+          feed.channels.length + " subscribed channels.");
+    } catch (err) {
+      if (token === state.requestToken) notice(err.message, true);
+    }
+    return;
+  }
   if (view === "library" || view === "liked" || view === "history") {
     try {
       await loadSaved();
@@ -665,6 +810,7 @@ async function ensureSaved(video) {
     await api("/api/videos", {method: "POST", body: JSON.stringify({
       url: video.id, title: video.title.slice(0, 160), tags,
       channel: (video.channel || "").slice(0, 100),
+      channel_id: video.channel_id || "",
       duration_seconds: Number.isFinite(video.duration) ? video.duration : (video.duration_seconds || 0)
     })});
   } catch (err) {
@@ -762,6 +908,7 @@ async function play(video) {
     state.currentVideo = video;
     $("player-title").textContent = video.title;
     updatePlayerLike();
+    updatePlayerSubscription();
     const saved = state.saved.find(item => item.id === video.id);
     await window.LocalTubePlayer.open(video, saved, sessionId);
     renderGrid();
@@ -784,7 +931,9 @@ $("sidebar-toggle").addEventListener("click", () => {
 });
 $("sidebar-backdrop").addEventListener("click", closeMobileSidebar);
 document.querySelectorAll(".nav-item[data-view]").forEach(nav => nav.addEventListener("click", () => loadView(nav.dataset.view)));
-$("reload-feed").addEventListener("click", () => loadView(state.view === "explore" ? "explore" : "home", {refresh: true}));
+$("reload-feed").addEventListener("click", () => loadView(
+  state.view === "subscriptions" ? "subscriptions" :
+    state.view === "explore" ? "explore" : "home", {refresh: true}));
 $("ranking-model").addEventListener("change", (event) => {
   const selection = event.currentTarget.value;
   state.ranker = ["semantic", "watch", "ml"].includes(selection) && state.semanticReady
@@ -834,6 +983,8 @@ $("empty-action").addEventListener("click", () => {
     renderShell();
   } else if (state.view === "library") {
     $("add-dialog").showModal();
+  } else if (state.view === "subscriptions") {
+    $("query-input").focus();
   } else if (state.view === "liked" || state.view === "search" || state.view === "history") {
     loadView("home");
   } else {
@@ -890,6 +1041,9 @@ $("topic-form").addEventListener("submit", async (event) => {
   } finally { submit.disabled = false; }
 });
 $("close-player").addEventListener("click", () => $("player-dialog").close());
+$("player-subscribe").addEventListener("click", () => {
+  if (state.currentVideo) toggleSubscription(state.currentVideo);
+});
 $("player-like").addEventListener("click", () => {
   if (state.currentVideo) toggleLike(state.currentVideo);
 });
@@ -897,6 +1051,7 @@ $("player-dialog").addEventListener("close", async () => {
   await window.LocalTubePlayer.close();
   state.currentVideo = null;
   updatePlayerLike();
+  updatePlayerSubscription();
   $("player-wrap").replaceChildren();
   try { await loadSaved(); } catch (_) {}
   if (state.view === "home" || state.view === "explore") loadView(state.view);
@@ -917,7 +1072,7 @@ document.addEventListener("keydown", (event) => {
 });
 (async () => {
   try {
-    await Promise.all([loadSaved(), loadTopics()]);
+    await Promise.all([loadSaved(), loadTopics(), loadSubscriptions()]);
     await checkSemanticAvailability();
     await loadView("home");
   } catch (err) {

@@ -158,7 +158,7 @@ def test_v09_optional_semantic_mode_ui_and_documentation():
     assert 'id="semantic-title"' in html
     assert 'requirements-semantic.txt' in html
     assert 'python -m semantic_engine download' in html
-    assert 'LocalTube v0.11 research' in html
+    assert 'LocalTube v0.12 research' in html
     assert 'v0.9 Semantic (setup)' in html
     assert 'async function checkSemanticAvailability()' in script
     assert 'api("/api/semantic/status")' in script
@@ -278,4 +278,33 @@ def test_v011_training_is_explicit_opt_in_and_viewport_gated():
     assert '["home", "explore"].includes(state.view)' in script
     assert 'data.ml_learning?.trained' not in script or "ml_learning" in script
     assert 'ranker: "content"' in script
+    assert parser.scripts == ["/static/player.js", "/static/app.js"]
+
+
+
+def test_local_subscriptions_has_accessible_sidebar_and_real_player_action():
+    html = HTML.read_text(encoding="utf-8")
+    js = JS.read_text(encoding="utf-8")
+    css = CSS.read_text(encoding="utf-8")
+    parser = PageParser()
+    parser.feed(html)
+    assert len(parser.ids) == len(set(parser.ids))
+    assert {"subscription-count", "subscription-panel", "subscription-list",
+            "player-subscribe"}.issubset(parser.ids)
+    assert 'data-view="subscriptions"' in html
+    assert 'id="player-subscribe"' in html
+    assert 'id="subscription-panel"' in html
+    assert "async function toggleSubscription(video)" in js
+    assert '"/api/subscriptions"' in js
+    assert '"/api/subscriptions/feed"' in js
+    assert "channel_id: video.channel_id || null" in js
+    assert '"subscription_prior", "Subscribed creator"' in js
+    assert 'new IntersectionObserver' in js  # v0.11 implicit learning remains.
+    assert 'if (view === "subscriptions") {' in js
+    assert 'state.view === "subscriptions" ? "subscriptions"' in js
+    assert "function renderSubscriptionList()" in js
+    assert "function updatePlayerSubscription()" in js
+    assert '$("player-subscribe").addEventListener("click"' in js
+    assert "video.channel_id = record.channel_id" in js
+    assert ".subscribe-button" in css and ".subscription-panel" in css
     assert parser.scripts == ["/static/player.js", "/static/app.js"]

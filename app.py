@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,12 +17,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
-from discovery import search_youtube
+from discovery import search_youtube, resolve_video_channel, channel_uploads
 from recommender import build_profile, topics_to_search, rank_feed
 from discovery_plan import build_queries
 from content_ranker import rank_content
 from contextual_relevance import contextual_scores
 import learning_ranker as ml
+import subscriptions as subs
 from watch_learning import (
     meaningful_threshold, meaningful_sessions, watch_features,
     watch_profile_library, session_examples,
@@ -69,6 +71,7 @@ def init_db():
             "resume_position": "REAL NOT NULL DEFAULT 0",
             "completions": "INTEGER NOT NULL DEFAULT 0",
             "last_watched_at": "TEXT",
+            "channel_id": "TEXT NOT NULL DEFAULT ''",
         }
         for column, sql_type in additions.items():
             if column not in columns:
@@ -99,6 +102,7 @@ def init_db():
         db.execute("""CREATE INDEX IF NOT EXISTS watch_sessions_by_video
             ON watch_sessions(video_id, updated_at)""")
         ml.initialize(db)
+        subs.initialize(db)
 
 
 
@@ -133,7 +137,8 @@ def as_video(row):
         "id": row["id"], "title": row["title"], "tags": json.loads(row["tags"]),
         "created_at": row["created_at"], "plays": row["plays"], "rating": row["rating"],
         "last_activity_at": row["last_activity_at"],
-        "channel": row["channel"], "duration_seconds": row["duration_seconds"],
+        "channel": row["channel"], "channel_id": row["channel_id"],
+        "duration_seconds": row["duration_seconds"],
         "watched_seconds": row["watched_seconds"], "resume_position": row["resume_position"],
         "completions": row["completions"], "last_watched_at": row["last_watched_at"]
     }
@@ -144,7 +149,15 @@ class NewVideo(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     tags: str = Field(default="", max_length=300)
     channel: str = Field(default="", max_length=100)
+    channel_id: str = Field(default="", pattern=r"^(?:|UC[A-Za-z0-9_-]{22})$")
     duration_seconds: float = Field(default=0.0, ge=0, le=86400)
+
+
+class SubscribeRequest(BaseModel):
+    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$")
+    channel_id: str | None = Field(
+        default=None, pattern=r"^UC[A-Za-z0-9_-]{22}$")
+    channel_name: str = Field(default="", max_length=100)
 
 
 class PlayStart(BaseModel):
@@ -223,10 +236,10 @@ def add_video(video: NewVideo):
         raise HTTPException(400, "Use at most eight tags of up to 30 characters")
     with connect() as db:
         try:
-            db.execute("INSERT INTO videos(id,title,tags,created_at,channel,duration_seconds) VALUES(?,?,?,?,?,?)", (
+            db.execute("INSERT INTO videos(id,title,tags,created_at,channel,channel_id,duration_seconds) VALUES(?,?,?,?,?,?,?)", (
                 video_id, title, json.dumps(tags),
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                video.channel.strip(), video.duration_seconds
+                video.channel.strip(), video.channel_id, video.duration_seconds
             ))
         except sqlite3.IntegrityError as exc:
             raise HTTPException(409, "This video is already saved") from exc
@@ -437,6 +450,112 @@ def clear_learning_data():
         ml.reset(db)
 
 
+def _channel_uploads_cached(channel_id: str, *, refresh: bool = False,
+                            limit: int = 6) -> list[dict]:
+    return subs.cached_uploads(
+        connect, channel_id, channel_uploads, force=refresh, limit=limit)
+
+
+@app.get("/api/subscriptions")
+def subscriptions_list():
+    with connect() as db:
+        return subs.listing(db)
+
+
+@app.post("/api/subscriptions")
+def subscribe_creator(body: SubscribeRequest):
+    """Local subscription, keyed by stable YouTube UC channel ID.
+
+    No account/OAuth. If older search metadata lacks a channel ID, resolve
+    the video's canonical creator on explicit user request only.
+    """
+    channel_id = body.channel_id
+    name = body.channel_name.strip()
+    if not channel_id:
+        try:
+            info = resolve_video_channel(body.video_id)
+        except Exception as exc:
+            raise HTTPException(
+                502, "Could not verify this video's YouTube channel ID. "
+                     "Try again later; no subscription was saved."
+            ) from exc
+        channel_id = info["channel_id"]
+        name = info["name"]
+    try:
+        with connect() as db:
+            record = subs.add(db, channel_id, name)
+            # Attach the verified stable ID to this saved video if present;
+            # don't turn subscribing into a play or implicit positive label.
+            db.execute("UPDATE videos SET channel_id=? WHERE id=?",
+                       (channel_id, body.video_id))
+            return record
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/subscriptions/{channel_id}", status_code=204)
+def unsubscribe_creator(channel_id: str):
+    try:
+        with connect() as db:
+            if not subs.remove(db, channel_id):
+                raise HTTPException(404, "Channel is not subscribed")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/subscriptions/feed")
+def subscription_uploads(refresh: bool = False):
+    """Chronological-ish creator feed, NOT gated by an ML prediction.
+
+    Public YouTube upload timestamps may be absent, so order is best-effort.
+    Any failed channel remains subscribed; no video is synthesized.
+    """
+    with connect() as db:
+        channels = subs.listing(db)
+        dismissed = {row[0] for row in db.execute(
+            "SELECT id FROM videos WHERE rating=-1")}
+    if not channels:
+        return {"channels": [], "videos": [], "failed_channels": []}
+
+    # Cap parallel YouTube work and reuse the same 15-minute SQLite cache
+    # that supplies the v0.11 personalized feed.
+    def fetch(channel):
+        try:
+            return channel, _channel_uploads_cached(
+                channel["channel_id"], refresh=refresh, limit=6), False
+        except Exception:
+            return channel, [], True
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        records = list(executor.map(fetch, channels))
+    failed = []
+    videos_found = {}
+    for channel, items, error in records:
+        if error:
+            failed.append(channel["channel_id"])
+        for position, item in enumerate(items):
+            vid = item.get("id")
+            if vid in dismissed or vid in videos_found:
+                continue
+            videos_found[vid] = {
+                **item,
+                "channel_id": channel["channel_id"],
+                "channel": channel["name"],
+                "tags": ["subscriptions"],
+                "reason": "New from your subscribed creator",
+                "_position": position,
+            }
+    ranked = sorted(videos_found.values(), key=lambda item: (
+        str(item.get("upload_date") or ""),
+        int(item.get("upload_timestamp") or 0),
+        -item["_position"],
+    ), reverse=True)
+    for item in ranked:
+        item.pop("_position")
+    return {"channels": channels, "videos": ranked[:120],
+            "failed_channels": failed}
+
+
 @app.get("/api/recommendations")
 def recommendations():
     library = videos()
@@ -614,8 +733,14 @@ def feed(refresh: bool = False,
     else:
         interests = _profile()
     topics = topics_to_search(interests, limit=3)
-    if not topics:
+    subscribed = []
+    if ranker == "ml":
+        with connect() as db:
+            subscribed = subs.listing(db)
+    if not topics and not subscribed:
         return {"topics": [], "videos": []}
+    if not topics and subscribed:
+        topics = ["subscribed creators"]
 
     with connect() as db:
         row = db.execute(
@@ -637,6 +762,24 @@ def feed(refresh: bool = False,
             batches.append((topic, _search_cached(query)))
         except HTTPException:
             continue
+    # v0.12: subscribed channel uploads are candidates in the opt-in ML
+    # feed. Neither channel display names nor arbitrary topic strings are
+    # used as identities. The subscription tab itself stays unranked.
+    if ranker == "ml" and subscribed:
+        for channel in subscribed[cursor % len(subscribed):] + subscribed[:cursor % len(subscribed)]:
+            if len([topic for topic, _ in batches
+                    if topic == "subscribed creators"]) >= 6:
+                break
+            try:
+                uploads = _channel_uploads_cached(channel["channel_id"], limit=6)
+            except Exception:
+                continue
+            if uploads:
+                batches.append(("subscribed creators", [
+                    {**video, "channel_id": channel["channel_id"],
+                     "channel": channel["name"]}
+                    for video in uploads
+                ]))
     if not batches:
         raise HTTPException(
             502, "YouTube discovery is unavailable right now. Your saved library still works."
@@ -692,6 +835,8 @@ def feed(refresh: bool = False,
             batches, interests, ranking_library, seen, limit=24, balance=balance,
             semantic_scores=semantic_scores,
             context_scores=context_scores,
+            subscribed_channel_ids={s["channel_id"] for s in subscribed}
+            if ranker == "ml" else None,
         )
     learning_stats = None
     if ranker == "ml":

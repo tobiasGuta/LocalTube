@@ -2,7 +2,15 @@
 
 **Your videos, your algorithm.** A privacy-minded, local-first YouTube viewer and video discovery tool that runs on Fedora.
 
-> **Research branch notice:** The new **v0.11 Local ML (experimental)**
+> **Research branch notice:** The new **v0.12 Local Subscriptions + ML Creator Affinity**
+> lives on `research/v0.12-local-subscriptions` (not `main` or earlier
+> experimental branches). Subscribe to channels locally by stable YouTube
+> channel ID, view their public uploads in a dedicated Subscriptions feed,
+> and let v0.11's trainable model use subscription membership as a ranking
+> feature. No Google account, channel-name hardcoding or invented labels.
+>
+> **[v0.12 implementation and privacy guide](docs/V012_SUBSCRIPTIONS.md)**.
+> The previous **v0.11 Local ML (experimental)**
 > mode lives on research/v0.11-online-ranker, not main or the frozen
 > research/v0.10-evaluation branch. It trains a small local ranking model
 > from genuine meaningful watch sessions and explicit Like/Not interested,

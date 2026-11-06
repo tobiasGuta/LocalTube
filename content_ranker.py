@@ -58,6 +58,7 @@ def rank_content(
     balance: int = 65,
     semantic_scores: dict[str, dict[str, float]] | None = None,
     context_scores: dict[str, dict[str, float]] | None = None,
+    subscribed_channel_ids: set[str] | None = None,
 ) -> list[dict]:
     """Rank candidate videos using explainable bounded features and greedy variety.
 
@@ -157,6 +158,12 @@ def rank_content(
             for key in ("interest_alignment", "disinterest_contrast"):
                 if key in context:
                     features[vid][key] = round(float(context[key]), 3)
+        if subscribed_channel_ids is not None:
+            # v0.12: explicit preference for an exact stable channel ID.
+            # This is an input feature, NOT a positive watch label: the
+            # separate trainable ML ranker can learn its predictive value.
+            features[vid]["subscription_prior"] = (
+                1.6 if video.get("channel_id") in subscribed_channel_ids else 0.0)
 
     selected: list[dict] = []
     topic_count: dict[str, int] = defaultdict(int)

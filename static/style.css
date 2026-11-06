@@ -266,3 +266,21 @@ body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-divider,body.sideb
 .why-factor-number.is-negative{color:#f4b5b5}
 .why-note{font-size:12px;line-height:1.6;color:#b4b1bb;margin:16px 0 0}
 @media(max-width:540px){.why-modal{padding:16px}.why-factor{padding:10px}.why-factor-number{font-size:14px}}
+
+
+/* v0.12: private, channel-ID keyed subscriptions and visible controls. */
+.subscribe-button{display:inline-flex;justify-content:center;align-items:center;gap:6px;width:max-content;border:1px solid #6c607e;border-radius:20px;background:#373042;color:#eee;padding:5px 11px;font-size:11px;font-weight:750;cursor:pointer;min-height:29px}
+.subscribe-button:hover{background:#4b405c;border-color:#927cb3}
+.subscribe-button:focus-visible{outline:2px solid #c1a1ff;outline-offset:2px}
+.subscribe-button.is-subscribed{background:#26272d;border-color:#56555b;color:#bdbdc4}
+.subscribe-button.is-subscribed:hover{color:#fff;border-color:#9e8cb9}
+.subscribe-button:disabled{opacity:.5;cursor:wait}
+.card-text .subscribe-button{margin-top:7px}
+.subscription-panel{border:1px solid #51476a;border-radius:12px;background:#282431;padding:15px;margin:8px 0 19px}
+.subscription-panel[hidden]{display:none}
+.subscription-panel h2{font-size:15px;margin:0 0 6px}
+.subscription-panel>p{font-size:12px;line-height:1.6;color:#c2b8cd;margin:0 0 12px}
+.subscription-list{display:flex;flex-wrap:wrap;gap:9px}
+.subscribed-channel-row{display:inline-flex;align-items:center;gap:9px;background:#302b38;border:1px solid #4b4355;border-radius:10px;padding:7px 9px;max-width:100%}
+.subscribed-channel-name{font-size:12px;min-width:0;overflow-wrap:anywhere;color:#eee;font-weight:650}
+@media(max-width:520px){.subscribed-channel-row{width:100%;justify-content:space-between}}

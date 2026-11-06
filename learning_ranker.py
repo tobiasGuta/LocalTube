@@ -28,6 +28,7 @@ FEATURE_SCALES = {
     "semantic_negative": 3.8,
     "interest_alignment": 3.0,
     "disinterest_contrast": 4.0,
+    "subscription_prior": 1.6,
 }
 FEATURES = tuple(FEATURE_SCALES)
 MIN_POSITIVES = 3
@@ -59,6 +60,18 @@ def initialize(db: sqlite3.Connection) -> None:
         positives INTEGER NOT NULL, negatives INTEGER NOT NULL,
         trained INTEGER NOT NULL, updated_at TEXT NOT NULL
     )""")
+    # v0.12 extends the frozen feature vector. Preserve existing real
+    # outcomes and refit using zero for unavailable historical features,
+    # instead of silently dropping all learned coefficients.
+    row = db.execute(
+        "SELECT weights_json FROM ml_model WHERE id=1").fetchone()
+    if row:
+        try:
+            weights = json.loads(row["weights_json"])
+        except (ValueError, TypeError):
+            weights = []
+        if not isinstance(weights, list) or len(weights) != len(FEATURES):
+            retrain(db)
 
 
 def _now() -> datetime:
