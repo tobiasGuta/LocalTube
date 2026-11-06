@@ -162,7 +162,7 @@ def test_v09_optional_semantic_mode_ui_and_documentation():
     assert 'v0.9 Semantic (setup)' in html
     assert 'async function checkSemanticAvailability()' in script
     assert 'api("/api/semantic/status")' in script
-    assert '"semantic" && state.semanticReady' in script
+    assert '["semantic", "watch"].includes(selection) && state.semanticReady' in script
     assert 'semantic_examples' in script
     assert 'semantic_positive' in script
     assert 'Semantic Interest Engine' in docs
